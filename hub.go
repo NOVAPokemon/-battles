@@ -3,14 +3,16 @@ package main
 import (
 	"encoding/json"
 	"github.com/NOVAPokemon/utils"
+	"github.com/NOVAPokemon/utils/websockets"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type Hub struct {
-	Battles map[primitive.ObjectID]*BattleLobby
+	Battles map[primitive.ObjectID]*websockets.Lobby
 }
 
 func HandleGetCurrentLobbies(hub *Hub, w http.ResponseWriter, r *http.Request) {
@@ -18,12 +20,14 @@ func HandleGetCurrentLobbies(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	var availableLobbies = make([]utils.Lobby, 0)
 
 	for k, v := range hub.Battles {
-		if !v.started {
-			toAdd := utils.Lobby{
-				Id:        k,
-				TrainerId: v.Trainer1.Id,
+		if !v.Started {
+			if len(v.Trainers) > 0 {
+				toAdd := utils.Lobby{
+					Id:       k,
+					Username: v.Trainers[0].Username,
+				}
+				availableLobbies = append(availableLobbies, toAdd)
 			}
-			availableLobbies = append(availableLobbies, toAdd)
 		}
 	}
 
@@ -64,10 +68,11 @@ func HandleCreateBattleLobby(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	//	return err, hub
 	//}
 
-	trainer1 := utils.Trainer{}
+	trainer1 := utils.Trainer{Pokemons: []*utils.Pokemon{{Id: primitive.NewObjectIDFromTimestamp(time.Unix(100, 100))}}} //
 
 	lobbyId := primitive.NewObjectID()
-	lobby := NewBattle(lobbyId, trainer1, conn)
+	lobby := websockets.NewLobby(lobbyId)
+	websockets.AddTrainer(lobby, trainer1, conn)
 	hub.Battles[lobbyId] = lobby
 }
 
@@ -107,9 +112,8 @@ func HandleJoinBattleLobby(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trainer2 := utils.Trainer{} //
+	trainer2 := utils.Trainer{Pokemons: []*utils.Pokemon{{Id: primitive.NewObjectIDFromTimestamp(time.Unix(120, 100))}}} //
 
-	JoinBattle(lobby, trainer2, conn2)
-
+	websockets.AddTrainer(lobby, trainer2, conn2)
 	StartBattle(lobby)
 }

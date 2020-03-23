@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/NOVAPokemon/utils/websockets"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
@@ -21,13 +22,13 @@ var upgrader = websocket.Upgrader{
 }
 
 func main() {
+
 	fmt.Print()
 	rand.Seed(time.Now().Unix())
-
 	flag.Parse()
 
 	hub := &Hub{
-		Battles: make(map[primitive.ObjectID]*BattleLobby),
+		Battles: make(map[primitive.ObjectID]*websockets.Lobby),
 	}
 
 	r := mux.NewRouter()
@@ -43,4 +44,5 @@ func main() {
 
 	log.Infof("Starting BATTLES server on %s...\n", url)
 	log.Fatal(http.ListenAndServe(*Addr, r))
+
 }
