@@ -118,7 +118,7 @@ func HandleJoinBattleLobby(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Error(err)
 	} else {
-		log.Infof("Battle %s finished, winner is: ", lobby.Id.Hex(), result.Winner.Username)
+		log.Infof("Battle %s finished, winner is: %s", lobby.Id.Hex(), result.Winner.Username)
 		commitBattleResults(result)
 		websockets.CloseLobby(lobby)
 	}
