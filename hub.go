@@ -2,28 +2,30 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/NOVAPokemon/authentication/auth"
 	"github.com/NOVAPokemon/utils"
+	"github.com/NOVAPokemon/utils/websockets"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net/http"
 	"strings"
 )
 
-type Hub struct {
-	Battles map[primitive.ObjectID]*BattleLobby
-}
+const BattlesName = "Battles"
 
 func HandleGetCurrentLobbies(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	var availableLobbies = make([]utils.Lobby, 0)
 
 	for k, v := range hub.Battles {
-		if !v.started {
-			toAdd := utils.Lobby{
-				Id:        k,
-				TrainerId: v.Trainer1.Id,
+		if !v.Started {
+			if len(v.Trainers) == 1 {
+				toAdd := utils.Lobby{
+					Id:       k,
+					Username: v.Trainers[0].Username,
+				}
+				availableLobbies = append(availableLobbies, toAdd)
 			}
-			availableLobbies = append(availableLobbies, toAdd)
 		}
 	}
 
@@ -56,18 +58,19 @@ func HandleCreateBattleLobby(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO change this to real auth
-	//Trainer1Id := decodeJwtToken(r)
-	//err, trainer1 := trainer.GetTrainerById(Trainer1Id)
-	//if err != nil {
-	//	log.Println(err)
-	//	return err, hub
-	//}
-
-	trainer1 := utils.Trainer{}
+	err, claims := auth.VerifyJWT(&w, r, BattlesName)
+	var trainer = claims.Trainer
 
 	lobbyId := primitive.NewObjectID()
-	lobby := NewBattle(lobbyId, trainer1, conn)
+
+	log.Infof("Trainer %s created lobby %s", trainer.Username, lobbyId.Hex())
+	log.Info("Trainer Pokemons:")
+	for _, pokemon := range trainer.Pokemons {
+		log.Infof(pokemon.Id.Hex())
+	}
+
+	lobby := websockets.NewLobby(lobbyId)
+	websockets.AddTrainer(lobby, trainer, conn)
 	hub.Battles[lobbyId] = lobby
 }
 
@@ -80,20 +83,15 @@ func HandleJoinBattleLobby(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO change this to real auth
-	//Trainer1Id := decodeJwtToken(r)
-	//err, trainer1 := trainer.GetTrainerById(Trainer1Id)
-	//if err != nil {
-	//	log.Println(err)
-	//	return err, hub
-	//}
+	err, claims := auth.VerifyJWT(&w, r, BattlesName)
+	var trainer = claims.Trainer
 
 	splitPath := strings.Split(r.URL.Path, "/")
 	lobbyId, err := primitive.ObjectIDFromHex(splitPath[len(splitPath)-1])
 
 	if err != nil {
 		log.Println(err)
-		http.Error(w, "battleId invalid", http.StatusBadRequest)
+		http.Error(w, "Invalid battleId", http.StatusBadRequest)
 		conn2.Close()
 		return
 	}
@@ -107,9 +105,27 @@ func HandleJoinBattleLobby(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trainer2 := utils.Trainer{} //
+	log.Infof("Trainer %s created lobby %s", trainer.Username, lobbyId.Hex())
+	log.Info("Trainer Pokemons:")
+	for _, pokemon := range trainer.Pokemons {
+		log.Infof(pokemon.Id.Hex())
+	}
 
-	JoinBattle(lobby, trainer2, conn2)
+	websockets.AddTrainer(lobby, trainer, conn2)
 
-	StartBattle(lobby)
+	result, err := StartBattle(lobby)
+
+	if err != nil {
+		log.Error(err)
+	} else {
+		log.Infof("Battle %s finished, winner is: ", lobby.Id.Hex(), result.Winner.Username)
+		commitBattleResults(result)
+		websockets.CloseLobby(lobby)
+	}
+}
+
+func commitBattleResults(status *BattleStatus) {
+
+	log.Infof("Commiting battle results")
+
 }
