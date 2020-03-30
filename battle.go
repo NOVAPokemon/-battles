@@ -195,10 +195,10 @@ func handleSelectPokemon(message *battles.BattleMessage, issuer *trainerStatus, 
 
 			}
 
-			issuer.selectedPokemon = pokemon
+			issuer.selectedPokemon = &pokemon
 
 			log.Infof("player 0 selected pokemon %+v", pokemon)
-			toSend, err := json.Marshal(*pokemon)
+			toSend, err := json.Marshal(pokemon)
 
 			if err != nil {
 				log.Error(err)
