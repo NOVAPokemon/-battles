@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/NOVAPokemon/authentication/auth"
 	"github.com/NOVAPokemon/utils"
+	"github.com/NOVAPokemon/utils/cookies"
 	"github.com/NOVAPokemon/utils/websockets"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -13,7 +13,7 @@ import (
 
 const BattlesName = "Battles"
 
-func HandleGetCurrentLobbies(hub *Hub, w http.ResponseWriter, r *http.Request) {
+func HandleGetCurrentLobbies(hub *Hub, w http.ResponseWriter, _ *http.Request) {
 
 	var availableLobbies = make([]utils.Lobby, 0)
 
