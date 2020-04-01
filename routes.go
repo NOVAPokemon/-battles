@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/NOVAPokemon/utils"
+	"github.com/NOVAPokemon/utils/api"
 )
 
 const GetBattlesName = "GET_BATTLES"
@@ -11,27 +12,23 @@ const JoinBattleName = "JOIN_BATTLE"
 const GET = "GET"
 const POST = "POST"
 
-const GetBattlesPath = "/battles"
-const StartBattlePath = "/battles/join"
-const JoinBattlePath = "/battles/join/{battleId}"
-
 var routes = utils.Routes{
 	utils.Route{
 		Name:        GetBattlesName,
 		Method:      GET,
-		Pattern:     GetBattlesPath,
+		Pattern:     api.GetBattlesPath,
 		HandlerFunc: GetCurrentLobbies,
 	},
 	utils.Route{
 		Name:        StartBattleName,
 		Method:      GET,
-		Pattern:     StartBattlePath,
+		Pattern:     api.StartBattlePath,
 		HandlerFunc: CreateBattleLobby,
 	},
 	utils.Route{
 		Name:        JoinBattleName,
 		Method:      GET,
-		Pattern:     JoinBattlePath,
+		Pattern:     api.JoinBattlePath,
 		HandlerFunc: JoinBattleLobby,
 	},
 }
