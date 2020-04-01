@@ -8,6 +8,7 @@ import (
 const GetBattlesName = "GET_BATTLES"
 const StartBattleName = "START_BATTLE"
 const JoinBattleName = "JOIN_BATTLE"
+const QueueForBattleName = "QUEUE_FOR_BATTLE"
 
 const GET = "GET"
 const POST = "POST"
@@ -30,5 +31,12 @@ var routes = utils.Routes{
 		Method:      GET,
 		Pattern:     api.JoinBattlePath,
 		HandlerFunc: JoinBattleLobby,
+	},
+
+	utils.Route{
+		Name:        QueueForBattleName,
+		Method:      GET,
+		Pattern:     api.QueueForBattlePath,
+		HandlerFunc: QueueForBattle,
 	},
 }

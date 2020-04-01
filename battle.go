@@ -28,6 +28,8 @@ var (
 
 type (
 	Battle struct {
+		Lobby *ws.Lobby
+
 		playerIds           [2]string
 		PlayersBattleStatus [2]*trainerBattleStatus
 

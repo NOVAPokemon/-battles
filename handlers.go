@@ -15,3 +15,7 @@ func CreateBattleLobby(w http.ResponseWriter, r *http.Request) {
 func JoinBattleLobby(w http.ResponseWriter, r *http.Request) {
 	HandleJoinBattleLobby(w, r)
 }
+
+func QueueForBattle(w http.ResponseWriter, r *http.Request) {
+	HandleQueueForBattle(w, r)
+}
