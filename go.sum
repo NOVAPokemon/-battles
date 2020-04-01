@@ -1,6 +1,7 @@
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/NOVAPokemon/authentication v0.0.7 h1:0YXFOgW5U1Y4T6QpeYCkRBFfguXDc05ri6ELceSq6x0=
 github.com/NOVAPokemon/authentication v0.0.7/go.mod h1:gGKnA1dqa8WigjT1AYHYtESgR2eQ5FCzIg105JAYDCE=
+github.com/NOVAPokemon/client v0.0.0-20200326221400-448e50665a63/go.mod h1:ULbG2Zw7VLS5QssKV6X9j+yefNu3KKg0TqAvctA36x4=
 github.com/NOVAPokemon/utils v0.0.35 h1:FZBIaDKIbXyFp7GaB7djrr8GgPP+2Ml2myQM6vkJ1f0=
 github.com/NOVAPokemon/utils v0.0.35/go.mod h1:/VJvC+7Xr15eJdwVoW2kHZ7wtUJZeI0pnqLLOwHpyH4=
 github.com/NOVAPokemon/utils v0.0.47 h1:tA7FVYDHp7PTHo3CR79FgZ09Sp9x/WYiSN9nLgw9nXs=

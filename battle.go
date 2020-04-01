@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/NOVAPokemon/utils"
-	"github.com/NOVAPokemon/utils/websockets"
+	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
@@ -13,62 +13,91 @@ import (
 
 const DefaultCooldown = time.Second * 2
 
+var (
+	ErrInvalidMessageFormat   = "Invalid message format"
+	ErrInvalidMessageType     = "Invalid message type"
+	ErrPokemonSelectionPhase  = "You need to select a pokemon"
+	ErrNoPokemonSelected      = "No pokemon selected"
+	ErrInvalidPokemonSelected = "You do not own that pokemon"
+	ErrPokemonNoHP            = "The selected pokemon has no HP"
+	ErrCooldown               = "You are in cooldown"
+
+	StatusDefended            = "Attack defended"
+	StatusOpponentedDeffended = "Opponent defended attack"
+)
+
 type (
-	BattleStatus struct {
-		BattleStarted  bool
-		BattleFinished bool
-		Winner         *utils.Trainer
-		Players        [2]*trainerStatus
+	Battle struct {
+		playerIds           [2]string
+		PlayersBattleStatus [2]*trainerBattleStatus
+
+		Winner   string
+		Finished bool
 	}
 
-	trainerStatus struct {
-		Trainer *utils.Trainer
-
+	trainerBattleStatus struct {
+		trainerPokemons []utils.Pokemon
 		selectedPokemon *utils.Pokemon
-		defending       bool
-		cooldown        bool
-		cdTimer         *time.Timer
+
+		defending bool
+		cooldown  bool
+		cdTimer   *time.Timer
 
 		playerInChannel  chan *string
 		playerOutChannel chan *string
 	}
 )
 
-func StartBattle(lobby *websockets.Lobby) (*BattleStatus, error) {
+func NewBattle(lobby *ws.Lobby) *Battle {
 
-	battleStatus, err := setupLoop(lobby)
-
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-
-	err = mainLoop(battleStatus)
-
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-
-	return battleStatus, nil
-}
-
-func setupLoop(lobby *websockets.Lobby) (*BattleStatus, error) {
-
-	// TODO timer to break the loop if a player takes too long to select
-
-	players := [2]*trainerStatus{
+	players := [2]*trainerBattleStatus{
 		{
-			lobby.Trainers[0], nil,
+			nil, nil,
 			false, false, time.NewTimer(DefaultCooldown),
 			*lobby.TrainerInChannels[0], *lobby.TrainerOutChannels[0],
 		},
 		{
-			lobby.Trainers[1], nil,
+			nil, nil,
 			false, false, time.NewTimer(DefaultCooldown),
 			*lobby.TrainerInChannels[1], *lobby.TrainerOutChannels[1],
 		},
 	}
+
+	return &Battle{
+		PlayersBattleStatus: players,
+		Finished:            false,
+		Winner:              "",
+	}
+}
+
+func (b *Battle) addPlayer(username string, pokemons []utils.Pokemon, playerNr int) {
+	b.playerIds[playerNr] = username
+	b.PlayersBattleStatus[playerNr].trainerPokemons = pokemons
+}
+
+func (b *Battle) StartBattle() (string, error) {
+
+	err := b.setupLoop()
+
+	if err != nil {
+		log.Error(err)
+		panic(err)
+	}
+
+	winner, err := b.mainLoop()
+
+	if err != nil {
+		log.Error(err)
+		panic(err)
+	}
+
+	return winner, err
+}
+
+func (b *Battle) setupLoop() error {
+
+	// TODO timer to break the loop if a player takes too long to select
+	players := b.PlayersBattleStatus
 
 	// loops until both players have selected a pokemon
 	for ; players[0].selectedPokemon == nil || players[1].selectedPokemon == nil; {
@@ -76,122 +105,122 @@ func setupLoop(lobby *websockets.Lobby) (*BattleStatus, error) {
 
 		case msgStr := <-players[0].playerInChannel:
 
-			err, msg := battles.ParseMessage(msgStr)
+			err, msg := ws.ParseMessage(msgStr)
 
 			if err != nil {
-				errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Invalid message type"}}
-				battles.SendMessage(errMsg, players[0].playerOutChannel)
+				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
+				ws.SendMessage(errMsg, players[0].playerOutChannel)
 				break
 			}
 
 			if msg.MsgType != battles.SELECT_POKEMON {
-				errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Wrong message type, needs: SELECT_POKEMON"}}
-				battles.SendMessage(errMsg, players[0].playerOutChannel)
+				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrPokemonSelectionPhase}}
+				ws.SendMessage(errMsg, players[0].playerOutChannel)
 				break
 			}
 
-			handleSelectPokemon(msg, players[0], players[1])
+			b.handleSelectPokemon(msg, players[0], players[1])
 
 		case msgStr := <-players[1].playerInChannel:
 
-			err, msg := battles.ParseMessage(msgStr)
+			err, msg := ws.ParseMessage(msgStr)
 
 			if err != nil {
-				errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Invalid message type"}}
-				battles.SendMessage(errMsg, players[0].playerOutChannel)
+				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
+				ws.SendMessage(errMsg, players[0].playerOutChannel)
 				break
 			}
 
 			if msg.MsgType != battles.SELECT_POKEMON {
-				errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Wrong message type, needs: SELECT_POKEMON"}}
-				battles.SendMessage(errMsg, players[0].playerOutChannel)
+				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
+				ws.SendMessage(errMsg, players[0].playerOutChannel)
 				break
 			}
 
-			handleSelectPokemon(msg, players[1], players[0])
+			b.handleSelectPokemon(msg, players[1], players[0])
 		}
 	}
 
 	log.Infof("Battle setup finished")
-	return &BattleStatus{true, false, nil, players}, nil
-}
-
-func mainLoop(battleStatus *BattleStatus) error {
-
-	go handlePlayerCooldownTimer(battleStatus, battleStatus.Players[0])
-	go handlePlayerCooldownTimer(battleStatus, battleStatus.Players[1])
-
-	// main battle loop
-	for ; !battleStatus.BattleFinished; {
-		select {
-
-		case msgStr := <-battleStatus.Players[0].playerInChannel:
-
-			err, msg := battles.ParseMessage(msgStr)
-			if err != nil {
-				errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Invalid message format"}}
-				battles.SendMessage(errMsg, battleStatus.Players[0].playerOutChannel)
-			}
-
-			handlePlayerMove(battleStatus, msg, battleStatus.Players[0], battleStatus.Players[1])
-
-		case msgStr := <-battleStatus.Players[1].playerInChannel:
-
-			err, msg := battles.ParseMessage(msgStr)
-			if err != nil {
-				errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Invalid message format"}}
-				battles.SendMessage(errMsg, battleStatus.Players[0].playerOutChannel)
-			}
-
-			handlePlayerMove(battleStatus, msg, battleStatus.Players[1], battleStatus.Players[0])
-		}
-	}
-
 	return nil
 }
 
+func (b *Battle) mainLoop() (string, error) {
+
+	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[0])
+	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[1])
+
+	// main battle loop
+	for ; !b.Finished; {
+		select {
+
+		case msgStr := <-b.PlayersBattleStatus[0].playerInChannel:
+
+			err, msg := ws.ParseMessage(msgStr)
+			if err != nil {
+				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageFormat}}
+				ws.SendMessage(errMsg, b.PlayersBattleStatus[0].playerOutChannel)
+			}
+
+			b.handlePlayerMove(msg, b.PlayersBattleStatus[0], b.PlayersBattleStatus[1])
+
+		case msgStr := <-b.PlayersBattleStatus[1].playerInChannel:
+
+			err, msg := ws.ParseMessage(msgStr)
+			if err != nil {
+				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageFormat}}
+				ws.SendMessage(errMsg, b.PlayersBattleStatus[0].playerOutChannel)
+			}
+
+			b.handlePlayerMove(msg, b.PlayersBattleStatus[1], b.PlayersBattleStatus[0])
+		}
+	}
+
+	return b.Winner, nil
+}
+
 // handles the reception of a move from a player.
-func handlePlayerMove(battleStatus *BattleStatus, message *battles.BattleMessage, issuer *trainerStatus, otherPlayer *trainerStatus) {
+func (b *Battle) handlePlayerMove(message *ws.Message, issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
 
 	switch message.MsgType {
 
 	case battles.ATTACK:
-		handleAttackMove(battleStatus, issuer, otherPlayer)
+		b.handleAttackMove(issuer, otherPlayer)
 
 	case battles.DEFEND:
-		handleDefendMove(battleStatus, issuer, otherPlayer)
+		b.handleDefendMove(issuer, otherPlayer)
 
 	case battles.USE_ITEM:
 		//TODO
 
 	case battles.SELECT_POKEMON:
-		handleSelectPokemon(message, issuer, otherPlayer)
+		b.handleSelectPokemon(message, issuer, otherPlayer)
 
 	default:
-		msg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf("Unknown command")}}
-		battles.SendMessage(msg, issuer.playerOutChannel)
+		msg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf(ErrInvalidMessageType)}}
+		ws.SendMessage(msg, issuer.playerOutChannel)
 		return
 	}
 }
 
 // handles the reception of a SELECT_POKEMON message, sends error message if message is not of type SELECT_POKEMON
-func handleSelectPokemon(message *battles.BattleMessage, issuer *trainerStatus, otherPlayer *trainerStatus) {
+func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
 
 	if len(message.MsgArgs) < 1 {
-		errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"no pokemon ID supplied"}}
-		battles.SendMessage(errMsg, issuer.playerOutChannel)
+		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrNoPokemonSelected}}
+		ws.SendMessage(errMsg, issuer.playerOutChannel)
 		return
 	}
 
 	selectedPokemon := message.MsgArgs[0]
 
-	for _, pokemon := range issuer.Trainer.Pokemons {
+	for _, pokemon := range issuer.trainerPokemons {
 		if pokemon.Id.Hex() == selectedPokemon {
 
 			if pokemon.HP <= 0 {
 				// pokemon is dead
-				msg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf("The selected pokemon has no HP")}}
-				battles.SendMessage(msg, issuer.playerOutChannel)
+				msg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf(ErrPokemonNoHP)}}
+				ws.SendMessage(msg, issuer.playerOutChannel)
 
 			}
 
@@ -207,31 +236,31 @@ func handleSelectPokemon(message *battles.BattleMessage, issuer *trainerStatus, 
 
 			log.Infof("%s", toSend)
 
-			msg := &battles.BattleMessage{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
-			battles.SendMessage(msg, otherPlayer.playerOutChannel)
-			msg = &battles.BattleMessage{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
-			battles.SendMessage(msg, issuer.playerOutChannel)
+			msg := ws.Message{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
+			ws.SendMessage(msg, otherPlayer.playerOutChannel)
+			msg = ws.Message{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
+			ws.SendMessage(msg, issuer.playerOutChannel)
 			return
 		}
 	}
 
-	errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"You do not own that Pokemon"}}
-	battles.SendMessage(errMsg, issuer.playerOutChannel)
+	errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidPokemonSelected}}
+	ws.SendMessage(errMsg, issuer.playerOutChannel)
 }
 
-func handleDefendMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPlayer *trainerStatus) {
+func (b *Battle) handleDefendMove(issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
 
 	// if the pokemon is dead, player must select a new pokemon
 	if issuer.selectedPokemon.HP == 0 {
-		errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Your Pokemon is dead, select a new one"}}
-		battles.SendMessage(errMsg, issuer.playerOutChannel)
+		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrPokemonNoHP}}
+		ws.SendMessage(errMsg, issuer.playerOutChannel)
 		return
 	}
 
 	// if player has moved recently and is in cooldown, discard move
 	if issuer.cooldown {
-		errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"You are in cooldown"}}
-		battles.SendMessage(errMsg, issuer.playerOutChannel)
+		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrCooldown}}
+		ws.SendMessage(errMsg, issuer.playerOutChannel)
 		return
 	}
 	issuer.cdTimer.Reset(DefaultCooldown)
@@ -246,11 +275,11 @@ func handleDefendMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPl
 		return
 	}
 
-	msg := &battles.BattleMessage{MsgType: battles.UPDATE_PLAYER, MsgArgs: []string{string(toSend)}}
-	battles.SendMessage(msg, issuer.playerOutChannel)
+	msg := ws.Message{MsgType: battles.UPDATE_PLAYER, MsgArgs: []string{string(toSend)}}
+	ws.SendMessage(msg, issuer.playerOutChannel)
 
-	msg = &battles.BattleMessage{MsgType: battles.UPDATE_ADVERSARY, MsgArgs: []string{string(toSend)}}
-	battles.SendMessage(msg, otherPlayer.playerOutChannel)
+	msg = ws.Message{MsgType: battles.UPDATE_ADVERSARY, MsgArgs: []string{string(toSend)}}
+	ws.SendMessage(msg, otherPlayer.playerOutChannel)
 
 	go func() { // after the player cooldown expires, remove defending status
 		<-issuer.cdTimer.C
@@ -258,18 +287,18 @@ func handleDefendMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPl
 	}()
 }
 
-func handleAttackMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPlayer *trainerStatus) {
+func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
 
 	if issuer.selectedPokemon.HP == 0 {
-		errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"Your Pokemon is dead, select a new one"}}
-		battles.SendMessage(errMsg, issuer.playerOutChannel)
+		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrPokemonNoHP}}
+		ws.SendMessage(errMsg, issuer.playerOutChannel)
 		return
 	}
 
 	// if player has moved recently and is in cooldown, discard move
 	if issuer.cooldown {
-		errMsg := &battles.BattleMessage{MsgType: battles.ERROR, MsgArgs: []string{"You are in cooldown"}}
-		battles.SendMessage(errMsg, issuer.playerOutChannel)
+		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrCooldown}}
+		ws.SendMessage(errMsg, issuer.playerOutChannel)
 		return
 	}
 	issuer.cdTimer.Reset(DefaultCooldown)
@@ -277,11 +306,11 @@ func handleAttackMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPl
 
 	if otherPlayer.defending {
 
-		msg := &battles.BattleMessage{MsgType: battles.STATUS, MsgArgs: []string{"Attack defended by opponent"}}
-		battles.SendMessage(msg, issuer.playerOutChannel)
+		msg := ws.Message{MsgType: battles.STATUS, MsgArgs: []string{StatusDefended}}
+		ws.SendMessage(msg, issuer.playerOutChannel)
 
-		msg = &battles.BattleMessage{MsgType: battles.STATUS, MsgArgs: []string{"Defended an attack by the opponent"}}
-		battles.SendMessage(msg, issuer.playerOutChannel)
+		msg = ws.Message{MsgType: battles.STATUS, MsgArgs: []string{StatusDefended}}
+		ws.SendMessage(msg, issuer.playerOutChannel)
 		return
 
 	} else {
@@ -292,7 +321,7 @@ func handleAttackMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPl
 			otherPlayer.selectedPokemon.HP = 0
 
 			allPokemonsDead := true
-			for _, pokemon := range otherPlayer.Trainer.Pokemons {
+			for _, pokemon := range otherPlayer.trainerPokemons {
 				if pokemon.HP > 0 {
 					allPokemonsDead = false
 					break
@@ -301,8 +330,7 @@ func handleAttackMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPl
 
 			if allPokemonsDead {
 				// battle is finished
-				battleStatus.Winner = issuer.Trainer
-				battleStatus.BattleFinished = true
+				b.Finished = true
 			}
 
 		}
@@ -314,18 +342,18 @@ func handleAttackMove(battleStatus *BattleStatus, issuer *trainerStatus, otherPl
 			return
 		}
 
-		msg := &battles.BattleMessage{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
-		battles.SendMessage(msg, issuer.playerOutChannel)
+		msg := ws.Message{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
+		ws.SendMessage(msg, issuer.playerOutChannel)
 
-		msg = &battles.BattleMessage{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
-		battles.SendMessage(msg, otherPlayer.playerOutChannel)
+		msg = ws.Message{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
+		ws.SendMessage(msg, otherPlayer.playerOutChannel)
 
 	}
 }
 
-func handlePlayerCooldownTimer(battleStatus *BattleStatus, player *trainerStatus) {
+func (b *Battle) handlePlayerCooldownTimer(player *trainerBattleStatus) {
 
-	for ; !battleStatus.BattleFinished; {
+	for ; !b.Finished; {
 		<-player.cdTimer.C
 		player.cooldown = false
 	}
