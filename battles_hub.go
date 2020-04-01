@@ -155,7 +155,5 @@ func HandleJoinBattleLobby(w http.ResponseWriter, r *http.Request) {
 }
 
 func commitBattleResults(battleId string, status *Battle) {
-
-	log.Infof("Commiting battle results from battle %s", battleId)
-
+	log.Infof("Commiting battle results from battle %s, with winner: %s", battleId, status.Winner)
 }
