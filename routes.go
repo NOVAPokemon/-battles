@@ -6,8 +6,8 @@ import (
 )
 
 const GetBattlesName = "GET_BATTLES"
-const StartBattleName = "START_BATTLE"
-const JoinBattleName = "JOIN_BATTLE"
+const ChallengeToBattleName = "START_BATTLE"
+const AcceptChallengeName = "JOIN_BATTLE"
 const QueueForBattleName = "QUEUE_FOR_BATTLE"
 
 const GET = "GET"
@@ -21,15 +21,15 @@ var routes = utils.Routes{
 		HandlerFunc: GetCurrentLobbies,
 	},
 	utils.Route{
-		Name:        StartBattleName,
+		Name:        ChallengeToBattleName,
 		Method:      GET,
-		Pattern:     api.StartBattlePath,
+		Pattern:     api.ChallengeToBattleRoute,
 		HandlerFunc: CreateBattleLobby,
 	},
 	utils.Route{
-		Name:        JoinBattleName,
+		Name:        AcceptChallengeName,
 		Method:      GET,
-		Pattern:     api.JoinBattlePath,
+		Pattern:     api.AcceptChallengeRoute,
 		HandlerFunc: JoinBattleLobby,
 	},
 

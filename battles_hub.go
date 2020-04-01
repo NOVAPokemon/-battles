@@ -2,10 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/NOVAPokemon/utils"
+	"github.com/NOVAPokemon/utils/api"
 	"github.com/NOVAPokemon/utils/clients"
 	"github.com/NOVAPokemon/utils/cookies"
+	"github.com/NOVAPokemon/utils/notifications"
 	ws "github.com/NOVAPokemon/utils/websockets"
+	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net/http"
@@ -15,7 +19,7 @@ import (
 const BattlesName = "Battles"
 
 type BattleHub struct {
-	notificationClient clients.NotificationClient
+	notificationClient *clients.NotificationClient
 
 	CreatedBattles map[primitive.ObjectID]*Battle
 	QueuedBattles  map[primitive.ObjectID]*Battle
@@ -26,9 +30,10 @@ var hub *BattleHub
 
 func init() {
 	hub = &BattleHub{
-		CreatedBattles: make(map[primitive.ObjectID]*Battle, 100),
-		QueuedBattles:  make(map[primitive.ObjectID]*Battle, 100),
-		ongoingBattles: make(map[primitive.ObjectID]*Battle, 100),
+		notificationClient: clients.NewNotificationClient(fmt.Sprintf("%s:%d", utils.Host, utils.NotificationsPort), nil),
+		CreatedBattles:     make(map[primitive.ObjectID]*Battle, 100),
+		QueuedBattles:      make(map[primitive.ObjectID]*Battle, 100),
+		ongoingBattles:     make(map[primitive.ObjectID]*Battle, 100),
 	}
 }
 
@@ -97,29 +102,19 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		}
 		delete(hub.QueuedBattles, battleId)
 		hub.ongoingBattles[battleId] = battle
-		ws.AddTrainer(battle.Lobby, authToken.Username, conn)
-		battle.addPlayer(authToken.Username, pokemons, 1)
-		winner, err := battle.StartBattle()
-
-		if err != nil {
-			log.Error(err)
-		} else {
-			log.Infof("Battle %s finished, winner is: %s", battleId.Hex(), winner)
-			commitBattleResults(battleId.Hex(), battle)
-			ws.CloseLobby(battle.Lobby)
-		}
+		battle.addPlayer(authToken.Username, pokemons, conn, 1)
+		startBattle(battleId, battle)
 		return
 	}
 
 	lobbyId := primitive.NewObjectID()
 	battleLobby := ws.NewLobby(lobbyId)
-	ws.AddTrainer(battleLobby, authToken.Username, conn)
 	battle := NewBattle(battleLobby)
-	battle.addPlayer(authToken.Username, pokemons, 0)
+	battle.addPlayer(authToken.Username, pokemons, conn, 0)
 	hub.QueuedBattles[lobbyId] = battle
 }
 
-func HandleCreateBattleLobby(w http.ResponseWriter, r *http.Request) {
+func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Error(err)
@@ -131,11 +126,29 @@ func HandleCreateBattleLobby(w http.ResponseWriter, r *http.Request) {
 	authToken, err := cookies.ExtractAndVerifyAuthToken(&w, r, BattlesName)
 
 	if err != nil {
-		http.Error(w, "Missing auth token", http.StatusUnauthorized)
 		return
 	}
 
+	challengedPlayer := mux.Vars(r)[api.TargetPlayerIdPathvar]
+
 	lobbyId := primitive.NewObjectID()
+	toSend := utils.Notification{
+		Id:       primitive.NewObjectID(),
+		Username: challengedPlayer,
+		Type:     notifications.ChallengeToBattle,
+		Content:  lobbyId.Hex(),
+	}
+
+	authCookie, _ := r.Cookie(cookies.AuthTokenCookieName)
+	hub.notificationClient.Jar, err = clients.CreateJarWithCookies(authCookie)
+
+	log.Infof("NOtificating other player...")
+
+	err = hub.notificationClient.AddNotification(toSend)
+
+	if err != nil {
+		http.Error(w, "Challenged player not online", http.StatusInternalServerError)
+	}
 
 	pokemonTkns := cookies.ExtractPokemonTokens(r)
 	pokemons := make([]utils.Pokemon, len(pokemonTkns))
@@ -148,11 +161,11 @@ func HandleCreateBattleLobby(w http.ResponseWriter, r *http.Request) {
 	ws.AddTrainer(battleLobby, authToken.Username, conn)
 
 	battle := NewBattle(battleLobby)
-	battle.addPlayer(authToken.Username, pokemons, 0)
+	battle.addPlayer(authToken.Username, pokemons, conn, 0)
 	hub.CreatedBattles[lobbyId] = battle
 }
 
-func HandleJoinBattleLobby(w http.ResponseWriter, r *http.Request) {
+func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	conn2, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
@@ -196,23 +209,25 @@ func HandleJoinBattleLobby(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ws.AddTrainer(battle.Lobby, authToken.Username, conn2)
-	battle.addPlayer(authToken.Username, pokemons, 1)
+	battle.addPlayer(authToken.Username, pokemons, conn2, 1)
+
+	startBattle(lobbyId, battle)
+
+}
+
+func startBattle(battleId primitive.ObjectID, battle *Battle) {
 	winner, err := battle.StartBattle()
 
 	if err != nil {
 		log.Error(err)
 	} else {
-		log.Infof("Battle %s finished, winner is: %s", lobbyId, winner)
-		commitBattleResults(lobbyId.Hex(), battle)
-		ws.CloseLobby(battle.Lobby)
+		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
+		commitBattleResults(battleId.Hex(), battle)
 	}
-}
 
-func get_some_key(m map[interface{}]interface{}) interface{} {
-	for k := range m {
-		return k
-	}
-	return 0
+	ws.CloseLobby(battle.Lobby)
+	delete(hub.ongoingBattles, battleId)
+
 }
 
 func commitBattleResults(battleId string, status *Battle) {

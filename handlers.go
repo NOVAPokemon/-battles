@@ -9,11 +9,11 @@ func GetCurrentLobbies(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateBattleLobby(w http.ResponseWriter, r *http.Request) {
-	HandleCreateBattleLobby(w, r)
+	HandleChallengeToBattle(w, r)
 }
 
 func JoinBattleLobby(w http.ResponseWriter, r *http.Request) {
-	HandleJoinBattleLobby(w, r)
+	HandleAcceptChallenge(w, r)
 }
 
 func QueueForBattle(w http.ResponseWriter, r *http.Request) {

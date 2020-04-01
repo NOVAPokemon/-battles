@@ -6,6 +6,7 @@ import (
 	"github.com/NOVAPokemon/utils"
 	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
+	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"time"
@@ -44,9 +45,6 @@ type (
 		defending bool
 		cooldown  bool
 		cdTimer   *time.Timer
-
-		playerInChannel  chan *string
-		playerOutChannel chan *string
 	}
 )
 
@@ -56,12 +54,6 @@ func NewBattle(lobby *ws.Lobby) *Battle {
 		{
 			nil, nil,
 			false, false, time.NewTimer(DefaultCooldown),
-			*lobby.TrainerInChannels[0], *lobby.TrainerOutChannels[0],
-		},
-		{
-			nil, nil,
-			false, false, time.NewTimer(DefaultCooldown),
-			*lobby.TrainerInChannels[1], *lobby.TrainerOutChannels[1],
 		},
 	}
 
@@ -69,12 +61,19 @@ func NewBattle(lobby *ws.Lobby) *Battle {
 		PlayersBattleStatus: players,
 		Finished:            false,
 		Winner:              "",
+		Lobby:               lobby,
 	}
 }
 
-func (b *Battle) addPlayer(username string, pokemons []utils.Pokemon, playerNr int) {
-	b.playerIds[playerNr] = username
-	b.PlayersBattleStatus[playerNr].trainerPokemons = pokemons
+func (b *Battle) addPlayer(username string, pokemons []utils.Pokemon, trainerConn *websocket.Conn, playerNr int) {
+
+	player := &trainerBattleStatus{
+		nil, nil,
+		false, false, time.NewTimer(DefaultCooldown),
+	}
+
+	ws.AddTrainer(b.Lobby, username, trainerConn)
+	b.PlayersBattleStatus[playerNr] = player
 }
 
 func (b *Battle) StartBattle() (string, error) {
@@ -105,41 +104,41 @@ func (b *Battle) setupLoop() error {
 	for ; players[0].selectedPokemon == nil || players[1].selectedPokemon == nil; {
 		select {
 
-		case msgStr := <-players[0].playerInChannel:
+		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
 
 			err, msg := ws.ParseMessage(msgStr)
 
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
-				ws.SendMessage(errMsg, players[0].playerOutChannel)
+				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[0])
 				break
 			}
 
 			if msg.MsgType != battles.SELECT_POKEMON {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrPokemonSelectionPhase}}
-				ws.SendMessage(errMsg, players[0].playerOutChannel)
+				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[0])
 				break
 			}
 
-			b.handleSelectPokemon(msg, players[0], players[1])
+			b.handleSelectPokemon(msg, players[0], *b.Lobby.TrainerOutChannels[0], *b.Lobby.TrainerOutChannels[1])
 
-		case msgStr := <-players[1].playerInChannel:
+		case msgStr := <-*b.Lobby.TrainerInChannels[1]:
 
 			err, msg := ws.ParseMessage(msgStr)
 
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
-				ws.SendMessage(errMsg, players[0].playerOutChannel)
+				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[1])
 				break
 			}
 
 			if msg.MsgType != battles.SELECT_POKEMON {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
-				ws.SendMessage(errMsg, players[0].playerOutChannel)
+				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[1])
 				break
 			}
 
-			b.handleSelectPokemon(msg, players[1], players[0])
+			b.handleSelectPokemon(msg, players[1], *b.Lobby.TrainerOutChannels[0], *b.Lobby.TrainerOutChannels[1])
 		}
 	}
 
@@ -156,25 +155,25 @@ func (b *Battle) mainLoop() (string, error) {
 	for ; !b.Finished; {
 		select {
 
-		case msgStr := <-b.PlayersBattleStatus[0].playerInChannel:
+		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
 
 			err, msg := ws.ParseMessage(msgStr)
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageFormat}}
-				ws.SendMessage(errMsg, b.PlayersBattleStatus[0].playerOutChannel)
+				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[0])
 			}
 
-			b.handlePlayerMove(msg, b.PlayersBattleStatus[0], b.PlayersBattleStatus[1])
+			b.handlePlayerMove(msg, b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0], b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1])
 
-		case msgStr := <-b.PlayersBattleStatus[1].playerInChannel:
+		case msgStr := <-*b.Lobby.TrainerInChannels[1]:
 
 			err, msg := ws.ParseMessage(msgStr)
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageFormat}}
-				ws.SendMessage(errMsg, b.PlayersBattleStatus[0].playerOutChannel)
+				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[0])
 			}
 
-			b.handlePlayerMove(msg, b.PlayersBattleStatus[1], b.PlayersBattleStatus[0])
+			b.handlePlayerMove(msg, b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[0], b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1])
 		}
 	}
 
@@ -182,35 +181,35 @@ func (b *Battle) mainLoop() (string, error) {
 }
 
 // handles the reception of a move from a player.
-func (b *Battle) handlePlayerMove(message *ws.Message, issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
+func (b *Battle) handlePlayerMove(message *ws.Message, issuer *trainerBattleStatus, issuerChan chan *string, otherPlayer *trainerBattleStatus, otherPlayerChan chan *string) {
 
 	switch message.MsgType {
 
 	case battles.ATTACK:
-		b.handleAttackMove(issuer, otherPlayer)
+		b.handleAttackMove(issuer, issuerChan, otherPlayer, otherPlayerChan)
 
 	case battles.DEFEND:
-		b.handleDefendMove(issuer, otherPlayer)
+		b.handleDefendMove(issuer, issuerChan, otherPlayerChan)
 
 	case battles.USE_ITEM:
 		//TODO
 
 	case battles.SELECT_POKEMON:
-		b.handleSelectPokemon(message, issuer, otherPlayer)
+		b.handleSelectPokemon(message, issuer, issuerChan, otherPlayerChan)
 
 	default:
 		msg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf(ErrInvalidMessageType)}}
-		ws.SendMessage(msg, issuer.playerOutChannel)
+		ws.SendMessage(msg, issuerChan)
 		return
 	}
 }
 
 // handles the reception of a SELECT_POKEMON message, sends error message if message is not of type SELECT_POKEMON
-func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
+func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleStatus, issuerChan chan *string, otherPlayer chan *string) {
 
 	if len(message.MsgArgs) < 1 {
 		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrNoPokemonSelected}}
-		ws.SendMessage(errMsg, issuer.playerOutChannel)
+		ws.SendMessage(errMsg, issuerChan)
 		return
 	}
 
@@ -222,7 +221,7 @@ func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleS
 			if pokemon.HP <= 0 {
 				// pokemon is dead
 				msg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf(ErrPokemonNoHP)}}
-				ws.SendMessage(msg, issuer.playerOutChannel)
+				ws.SendMessage(msg, issuerChan)
 
 			}
 
@@ -239,30 +238,30 @@ func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleS
 			log.Infof("%s", toSend)
 
 			msg := ws.Message{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
-			ws.SendMessage(msg, otherPlayer.playerOutChannel)
+			ws.SendMessage(msg, otherPlayer)
 			msg = ws.Message{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
-			ws.SendMessage(msg, issuer.playerOutChannel)
+			ws.SendMessage(msg, issuerChan)
 			return
 		}
 	}
 
 	errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidPokemonSelected}}
-	ws.SendMessage(errMsg, issuer.playerOutChannel)
+	ws.SendMessage(errMsg, issuerChan)
 }
 
-func (b *Battle) handleDefendMove(issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
+func (b *Battle) handleDefendMove(issuer *trainerBattleStatus, issuerChan chan *string, otherPlayer chan *string) {
 
 	// if the pokemon is dead, player must select a new pokemon
 	if issuer.selectedPokemon.HP == 0 {
 		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrPokemonNoHP}}
-		ws.SendMessage(errMsg, issuer.playerOutChannel)
+		ws.SendMessage(errMsg, issuerChan)
 		return
 	}
 
 	// if player has moved recently and is in cooldown, discard move
 	if issuer.cooldown {
 		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrCooldown}}
-		ws.SendMessage(errMsg, issuer.playerOutChannel)
+		ws.SendMessage(errMsg, issuerChan)
 		return
 	}
 	issuer.cdTimer.Reset(DefaultCooldown)
@@ -278,10 +277,10 @@ func (b *Battle) handleDefendMove(issuer *trainerBattleStatus, otherPlayer *trai
 	}
 
 	msg := ws.Message{MsgType: battles.UPDATE_PLAYER, MsgArgs: []string{string(toSend)}}
-	ws.SendMessage(msg, issuer.playerOutChannel)
+	ws.SendMessage(msg, issuerChan)
 
 	msg = ws.Message{MsgType: battles.UPDATE_ADVERSARY, MsgArgs: []string{string(toSend)}}
-	ws.SendMessage(msg, otherPlayer.playerOutChannel)
+	ws.SendMessage(msg, otherPlayer)
 
 	go func() { // after the player cooldown expires, remove defending status
 		<-issuer.cdTimer.C
@@ -289,18 +288,18 @@ func (b *Battle) handleDefendMove(issuer *trainerBattleStatus, otherPlayer *trai
 	}()
 }
 
-func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, otherPlayer *trainerBattleStatus) {
+func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, issuerChan chan *string, otherPlayer *trainerBattleStatus, otherPlayerChan chan *string) {
 
 	if issuer.selectedPokemon.HP == 0 {
 		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrPokemonNoHP}}
-		ws.SendMessage(errMsg, issuer.playerOutChannel)
+		ws.SendMessage(errMsg, issuerChan)
 		return
 	}
 
 	// if player has moved recently and is in cooldown, discard move
 	if issuer.cooldown {
 		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrCooldown}}
-		ws.SendMessage(errMsg, issuer.playerOutChannel)
+		ws.SendMessage(errMsg, issuerChan)
 		return
 	}
 	issuer.cdTimer.Reset(DefaultCooldown)
@@ -309,10 +308,10 @@ func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, otherPlayer *trai
 	if otherPlayer.defending {
 
 		msg := ws.Message{MsgType: battles.STATUS, MsgArgs: []string{StatusDefended}}
-		ws.SendMessage(msg, issuer.playerOutChannel)
+		ws.SendMessage(msg, issuerChan)
 
 		msg = ws.Message{MsgType: battles.STATUS, MsgArgs: []string{StatusDefended}}
-		ws.SendMessage(msg, issuer.playerOutChannel)
+		ws.SendMessage(msg, issuerChan)
 		return
 
 	} else {
@@ -345,10 +344,10 @@ func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, otherPlayer *trai
 		}
 
 		msg := ws.Message{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
-		ws.SendMessage(msg, issuer.playerOutChannel)
+		ws.SendMessage(msg, issuerChan)
 
 		msg = ws.Message{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
-		ws.SendMessage(msg, otherPlayer.playerOutChannel)
+		ws.SendMessage(msg, otherPlayerChan)
 
 	}
 }
