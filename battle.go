@@ -177,6 +177,10 @@ func (b *Battle) mainLoop() (string, error) {
 		}
 	}
 
+	finishMsg := ws.Message{MsgType: battles.FINISH, MsgArgs: []string{}}
+	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[0])
+	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[1])
+
 	return b.Winner, nil
 }
 
@@ -307,11 +311,11 @@ func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, issuerChan chan *
 
 	if otherPlayer.defending {
 
-		msg := ws.Message{MsgType: battles.STATUS, MsgArgs: []string{StatusDefended}}
+		msg := ws.Message{MsgType: battles.STATUS, MsgArgs: []string{StatusOpponentedDeffended}}
 		ws.SendMessage(msg, issuerChan)
 
 		msg = ws.Message{MsgType: battles.STATUS, MsgArgs: []string{StatusDefended}}
-		ws.SendMessage(msg, issuerChan)
+		ws.SendMessage(msg, otherPlayerChan)
 		return
 
 	} else {
