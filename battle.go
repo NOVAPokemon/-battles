@@ -106,7 +106,7 @@ func (b *Battle) setupLoop() error {
 
 		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
 
-			err, msg := ws.ParseMessage(msgStr)
+			msg, err := ws.ParseMessage(msgStr)
 
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
@@ -124,7 +124,7 @@ func (b *Battle) setupLoop() error {
 
 		case msgStr := <-*b.Lobby.TrainerInChannels[1]:
 
-			err, msg := ws.ParseMessage(msgStr)
+			msg, err := ws.ParseMessage(msgStr)
 
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageType}}
@@ -157,7 +157,7 @@ func (b *Battle) mainLoop() (string, error) {
 
 		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
 
-			err, msg := ws.ParseMessage(msgStr)
+			msg, err := ws.ParseMessage(msgStr)
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageFormat}}
 				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[0])
@@ -167,7 +167,7 @@ func (b *Battle) mainLoop() (string, error) {
 
 		case msgStr := <-*b.Lobby.TrainerInChannels[1]:
 
-			err, msg := ws.ParseMessage(msgStr)
+			msg, err := ws.ParseMessage(msgStr)
 			if err != nil {
 				errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{ErrInvalidMessageFormat}}
 				ws.SendMessage(errMsg, *b.Lobby.TrainerOutChannels[0])
