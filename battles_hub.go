@@ -44,9 +44,9 @@ var (
 )
 
 func init() {
-	addr := fmt.Sprintf("%s:%d", utils.Host, utils.NotificationsPort)
 	hub = &BattleHub{
-		notificationClient: clients.NewNotificationClient(addr, nil),
+		trainersClient:     clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort)),
+		notificationClient: clients.NewNotificationClient(fmt.Sprintf("%s:%d", utils.Host, utils.NotificationsPort), nil),
 		AwaitingLobbies:    make(map[primitive.ObjectID]*Battle, 100),
 		QueuedBattles:      make(map[primitive.ObjectID]*Battle, 100),
 		ongoingBattles:     make(map[primitive.ObjectID]*Battle, 100),
@@ -97,9 +97,13 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
 
 	if err != nil {
-		http.Error(w, ErrMissingAuthToken.Error(), http.StatusUnauthorized)
+		log.Error()
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("No auth token"))
+		_ = conn.Close()
 		return
 	}
+
+	log.Infof("New player queued for battle: %s", authToken.Username)
 
 	pokemons, err := getTrainerPokemons(authToken.Username, r)
 	if err != nil {
@@ -256,17 +260,21 @@ func getTrainerPokemons(username string, r *http.Request) ([]utils.Pokemon, erro
 	pokemonHashes := make(map[string][]byte, len(pokemonTkns))
 	for _, pokemonTkn := range pokemonTkns {
 		pokemonId := pokemonTkn.Pokemon.Id.Hex()
-		log.Infof(pokemonId)
+
 		pokemons = append(pokemons, pokemonTkn.Pokemon)
 		pokemonHashes[pokemonId] = pokemonTkn.PokemonHash
 	}
 
-	valid, err := hub.trainersClient.VerifyPokemons(username, pokemonHashes)
+	fmt.Println(r.Header.Get(tokens.AuthTokenHeaderName))
+
+	upToDate, err := hub.trainersClient.VerifyPokemons(username, pokemonHashes, r.Header.Get(tokens.AuthTokenHeaderName))
 	if err != nil {
+		log.Error("Invalid pokemon hash: ", err)
 		return nil, err
 	}
 
-	if !*valid {
+	if !*upToDate {
+		log.Error("token not up to date")
 		return nil, ErrInvalidPokemonHashes
 	}
 
