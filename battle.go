@@ -21,12 +21,14 @@ type (
 		playerIds           [2]string
 		PlayersBattleStatus [2]*trainerBattleStatus
 
-		Winner   string
-		Finished bool
+		Winner    string
+		Selecting bool
+		Finished  bool
 	}
 
 	trainerBattleStatus struct {
-		trainerPokemons []utils.Pokemon
+		username        string
+		trainerPokemons map[string]*utils.Pokemon
 		selectedPokemon *utils.Pokemon
 
 		defending bool
@@ -37,24 +39,18 @@ type (
 
 func NewBattle(lobby *ws.Lobby) *Battle {
 
-	players := [2]*trainerBattleStatus{
-		{
-			nil, nil,
-			false, false, time.NewTimer(DefaultCooldown),
-		},
-	}
-
 	return &Battle{
-		PlayersBattleStatus: players,
+		PlayersBattleStatus: [2]*trainerBattleStatus{},
 		Finished:            false,
 		Winner:              "",
 		Lobby:               lobby,
 	}
 }
 
-func (b *Battle) addPlayer(username string, pokemons []utils.Pokemon, trainerConn *websocket.Conn, playerNr int) {
+func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, trainerConn *websocket.Conn, playerNr int) {
 
 	player := &trainerBattleStatus{
+		username,
 		pokemons, nil,
 		false, false, time.NewTimer(DefaultCooldown),
 	}
@@ -89,11 +85,10 @@ func (b *Battle) setupLoop() error {
 
 	// loops until both players have selected a pokemon
 	for ; players[0].selectedPokemon == nil || players[1].selectedPokemon == nil; {
+		b.logBattleStatus()
 		select {
 
 		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
-
-			fmt.Println(msgStr)
 
 			msg, err := ws.ParseMessage(msgStr)
 
@@ -131,7 +126,8 @@ func (b *Battle) setupLoop() error {
 		}
 	}
 
-	log.Infof("Battle setup finished")
+	log.Info("Battle setup finished")
+	b.Selecting = false
 	return nil
 }
 
@@ -140,8 +136,14 @@ func (b *Battle) mainLoop() (string, error) {
 	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[0])
 	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[1])
 
+	startMsg := ws.Message{MsgType: battles.START, MsgArgs: []string{}}
+	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[0])
+	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[1])
+	log.Info("Sent START message")
+
 	// main battle loop
 	for ; !b.Finished; {
+		b.logBattleStatus()
 		select {
 
 		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
@@ -191,7 +193,6 @@ func (b *Battle) handlePlayerMove(message *ws.Message, issuer *trainerBattleStat
 		//TODO
 
 	case battles.SELECT_POKEMON:
-		fmt.Println("SUP")
 		b.handleSelectPokemon(message, issuer, issuerChan, otherPlayerChan)
 		break
 
@@ -213,40 +214,35 @@ func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleS
 	}
 
 	selectedPokemon := message.MsgArgs[0]
-	log.Infof("Selected : %s", selectedPokemon)
+	pokemon, ok := issuer.trainerPokemons[selectedPokemon]
 
-	for _, pokemon := range issuer.trainerPokemons {
-		if pokemon.Id.Hex() == selectedPokemon {
+	if !ok {
+		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{battles.ErrInvalidPokemonSelected}}
+		ws.SendMessage(errMsg, issuerChan)
+		return
+	}
+	if pokemon.HP <= 0 {
+		// pokemon is dead
+		msg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf(battles.ErrPokemonNoHP)}}
+		ws.SendMessage(msg, issuerChan)
 
-			if pokemon.HP <= 0 {
-				// pokemon is dead
-				msg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf(battles.ErrPokemonNoHP)}}
-				ws.SendMessage(msg, issuerChan)
-
-			}
-
-			issuer.selectedPokemon = &pokemon
-
-			log.Infof("player 0 selected pokemon %+v", pokemon)
-			toSend, err := json.Marshal(pokemon)
-
-			if err != nil {
-				log.Error(err)
-
-			}
-
-			log.Infof("%s", toSend)
-
-			msg := ws.Message{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
-			ws.SendMessage(msg, otherPlayer)
-			msg = ws.Message{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
-			ws.SendMessage(msg, issuerChan)
-			return
-		}
 	}
 
-	errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{battles.ErrInvalidPokemonSelected}}
-	ws.SendMessage(errMsg, issuerChan)
+	issuer.selectedPokemon = pokemon
+
+	toSend, err := json.Marshal(pokemon)
+
+	if err != nil {
+		log.Error(err)
+
+	}
+
+	msg := ws.Message{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
+	ws.SendMessage(msg, otherPlayer)
+	msg = ws.Message{MsgType: battles.UPDATE_PLAYER_POKEMON, MsgArgs: []string{string(toSend)}}
+	ws.SendMessage(msg, issuerChan)
+	return
+
 }
 
 func (b *Battle) handleDefendMove(issuer *trainerBattleStatus, issuerChan chan *string, otherPlayer chan *string) {
@@ -331,7 +327,21 @@ func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, issuerChan chan *
 
 			if allPokemonsDead {
 				// battle is finished
+
+				log.Info("--------------BATTLE FINISHED---------------")
+				log.Infof("Winner : %s", issuer.username)
+				log.Infof("Trainer 0 (%s) pokemons:", issuer.username)
+				for _, v := range b.PlayersBattleStatus[0].trainerPokemons {
+					log.Infof("Pokemon %:\t HP:%d", v.Id.Hex(), v.HP)
+				}
+
+				log.Infof("Trainer 1 (%s) pokemons:", issuer.username)
+				for _, v := range b.PlayersBattleStatus[1].trainerPokemons {
+					log.Infof("Pokemon %:\t HP:%d", v.Id.Hex(), v.HP)
+				}
+
 				b.Finished = true
+				b.Winner = issuer.username
 			}
 
 		}
@@ -357,5 +367,22 @@ func (b *Battle) handlePlayerCooldownTimer(player *trainerBattleStatus) {
 	for ; !b.Finished; {
 		<-player.cdTimer.C
 		player.cooldown = false
+	}
+}
+
+func (b *Battle) logBattleStatus() {
+
+	log.Info("----------------------------------------")
+	pokemon := b.PlayersBattleStatus[0].selectedPokemon
+	log.Infof("Battle %s Info: selecting:%t", b.Lobby.Id.Hex(), b.Selecting)
+	log.Infof("Player 0 status: defending:%t ; cooldown:%t ", b.PlayersBattleStatus[0].defending, b.PlayersBattleStatus[0].cooldown)
+	if pokemon != nil {
+		log.Infof("Player 0 pokemon: id: %s; Species : %s ; Damage: %d; HP: %d ;", pokemon.Id.Hex(), pokemon.Species, pokemon.Damage, pokemon.HP)
+	}
+
+	pokemon = b.PlayersBattleStatus[1].selectedPokemon
+	log.Infof("Player 1 status: defending:%t ; cooldown:%t ", b.PlayersBattleStatus[1].defending, b.PlayersBattleStatus[1].cooldown)
+	if pokemon != nil {
+		log.Infof("Player 1 pokemon: id: %s; Species : %s ; Damage: %d; HP: %d ;", pokemon.Id.Hex(), pokemon.Species, pokemon.Damage, pokemon.HP)
 	}
 }

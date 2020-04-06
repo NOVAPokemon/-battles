@@ -16,7 +16,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net/http"
-	"strings"
 )
 
 const BattlesName = "Battles"
@@ -34,9 +33,7 @@ var hub *BattleHub
 
 var (
 	ErrBattleNotExists      = errors.New("Battle does not exist")
-	ErrInvalidBattleId      = errors.New("Invalid battleId")
 	ErrInConnection         = errors.New("Connection Error")
-	ErrMissingAuthToken     = errors.New("Missing auth token")
 	ErrPlayerNotOnline      = errors.New("Challenged player not online")
 	ErrNotEnoughPokemons    = errors.New("Not enough pokemons")
 	ErrTooManyPokemons      = errors.New("Not enough pokemons")
@@ -104,12 +101,16 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infof("New player queued for battle: %s", authToken.Username)
-
 	pokemons, err := getTrainerPokemons(authToken.Username, r)
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
 		_ = conn.Close()
 		return
+	}
+
+	log.Info("Player pokemons:")
+	for _, p := range pokemons {
+		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
 
 	if len(hub.QueuedBattles) > 0 {
@@ -138,17 +139,34 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Error(err)
 		http.Error(w, ErrInConnection.Error(), http.StatusInternalServerError)
-		conn.Close()
+		_ = conn.Close()
 		return
 	}
 
 	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
 
 	if err != nil {
+		log.Error()
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("No auth token"))
+		_ = conn.Close()
 		return
 	}
 
+	pokemons, err := getTrainerPokemons(authToken.Username, r)
+
+	if err != nil {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		_ = conn.Close()
+		return
+	}
+
+	log.Infof("Player pokemons:")
+	for _, p := range pokemons {
+		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
+	}
+
 	challengedPlayer := mux.Vars(r)[api.TargetPlayerIdPathvar]
+	log.Infof("Player %s challenged %s for a battle", authToken.Username, challengedPlayer)
 
 	lobbyId := primitive.NewObjectID()
 	toSend := utils.Notification{
@@ -158,77 +176,76 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		Content:  []byte(lobbyId.Hex()),
 	}
 
+	log.Infof("Sending notification: Id:%s Content:%s to %s", toSend.Id.Hex(), string(toSend.Content), toSend.Username)
 	err = hub.notificationClient.AddNotification(toSend, r.Header.Get(tokens.AuthTokenHeaderName))
 
 	if err != nil {
 		http.Error(w, ErrPlayerNotOnline.Error(), http.StatusInternalServerError)
-	}
-
-	pokemons, err := getTrainerPokemons(authToken.Username, r)
-	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-		_ = conn.Close()
+		return
 	}
 
 	battleLobby := ws.NewLobby(lobbyId)
 	battle := NewBattle(battleLobby)
 	battle.addPlayer(authToken.Username, pokemons, conn, 0)
 	hub.AwaitingLobbies[lobbyId] = battle
+	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
 }
 
 func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
-	conn2, err := upgrader.Upgrade(w, r, nil)
-
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
 		http.Error(w, ErrInConnection.Error(), http.StatusInternalServerError)
+		_ = conn.Close()
 		return
 	}
 
 	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
 
 	if err != nil {
-		http.Error(w, ErrMissingAuthToken.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	splitPath := strings.Split(r.URL.Path, "/")
-	lobbyId, err := primitive.ObjectIDFromHex(splitPath[len(splitPath)-1])
-	if err != nil {
-		log.Println(err)
-		http.Error(w, ErrInvalidBattleId.Error(), http.StatusBadRequest)
-		conn2.Close()
-		return
-	}
-
-	battle, ok := hub.AwaitingLobbies[lobbyId]
-	if !ok {
-		log.Println(err)
-		http.Error(w, ErrBattleNotExists.Error(), http.StatusNotFound)
-		conn2.Close()
+		log.Error()
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("No auth token"))
+		_ = conn.Close()
 		return
 	}
 
 	pokemons, err := getTrainerPokemons(authToken.Username, r)
+
 	if err != nil {
-		_ = conn2.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-		_ = conn2.Close()
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		_ = conn.Close()
+		return
+	}
+
+	log.Infof("Player pokemons:")
+	for _, p := range pokemons {
+		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
+	}
+
+	lobbyId, err := primitive.ObjectIDFromHex(mux.Vars(r)[api.BattleIdPathVar])
+	battle, ok := hub.AwaitingLobbies[lobbyId]
+
+	if !ok {
+		log.Println(err)
+		http.Error(w, ErrBattleNotExists.Error(), http.StatusNotFound)
+		_ = conn.Close()
+		return
 	}
 
 	delete(hub.AwaitingLobbies, lobbyId)
-	log.Infof("Trainer %s created ws %s", authToken.Username, lobbyId.Hex())
-	log.Info("Trainer Pokemons:")
-
-	battle.addPlayer(authToken.Username, pokemons, conn2, 1)
+	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
+	battle.addPlayer(authToken.Username, pokemons, conn, 1)
 	startBattle(lobbyId, battle)
-
 }
 
 func startBattle(battleId primitive.ObjectID, battle *Battle) {
+
+	log.Infof("Battle %s starting...", battleId.Hex())
 	hub.ongoingBattles[battleId] = battle
 	winner, err := battle.StartBattle()
 
 	if err != nil {
+		log.Infof("Battle %s finished with error: ", err)
 		log.Error(err)
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
@@ -240,32 +257,32 @@ func startBattle(battleId primitive.ObjectID, battle *Battle) {
 
 }
 
-func getTrainerPokemons(username string, r *http.Request) ([]utils.Pokemon, error) {
+func getTrainerPokemons(username string, r *http.Request) (map[string]*utils.Pokemon, error) {
 
 	pokemonTkns, err := tokens.ExtractAndVerifyPokemonTokens(r.Header)
 
 	if err != nil {
+		log.Error(err)
 		return nil, err
 	}
 
 	if len(pokemonTkns) > battles.PokemonsPerBattle {
-		return nil, ErrNotEnoughPokemons
-	}
-
-	if len(pokemonTkns) < battles.PokemonsPerBattle {
+		log.Error(ErrTooManyPokemons)
 		return nil, ErrTooManyPokemons
 	}
 
-	pokemons := make([]utils.Pokemon, len(pokemonTkns))
+	if len(pokemonTkns) < battles.PokemonsPerBattle {
+		log.Error(ErrNotEnoughPokemons)
+		return nil, ErrNotEnoughPokemons
+	}
+
+	pokemons := make(map[string]*utils.Pokemon, len(pokemonTkns))
 	pokemonHashes := make(map[string][]byte, len(pokemonTkns))
 	for _, pokemonTkn := range pokemonTkns {
 		pokemonId := pokemonTkn.Pokemon.Id.Hex()
-
-		pokemons = append(pokemons, pokemonTkn.Pokemon)
+		pokemons[pokemonId] = &pokemonTkn.Pokemon
 		pokemonHashes[pokemonId] = pokemonTkn.PokemonHash
 	}
-
-	fmt.Println(r.Header.Get(tokens.AuthTokenHeaderName))
 
 	upToDate, err := hub.trainersClient.VerifyPokemons(username, pokemonHashes, r.Header.Get(tokens.AuthTokenHeaderName))
 	if err != nil {
