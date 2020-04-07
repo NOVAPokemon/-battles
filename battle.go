@@ -332,12 +332,12 @@ func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, issuerChan chan *
 				log.Infof("Winner : %s", issuer.username)
 				log.Infof("Trainer 0 (%s) pokemons:", issuer.username)
 				for _, v := range b.PlayersBattleStatus[0].trainerPokemons {
-					log.Infof("Pokemon %:\t HP:%d", v.Id.Hex(), v.HP)
+					log.Infof("Pokemon %s:\t HP:%d", v.Id.Hex(), v.HP)
 				}
 
 				log.Infof("Trainer 1 (%s) pokemons:", issuer.username)
 				for _, v := range b.PlayersBattleStatus[1].trainerPokemons {
-					log.Infof("Pokemon %:\t HP:%d", v.Id.Hex(), v.HP)
+					log.Infof("Pokemon %s:\t HP:%d", v.Id.Hex(), v.HP)
 				}
 
 				b.Finished = true
