@@ -18,8 +18,6 @@ import (
 	"net/http"
 )
 
-const BattlesName = "Battles"
-
 type BattleHub struct {
 	notificationClient *clients.NotificationClient
 	trainersClient     *clients.TrainersClient
@@ -122,7 +120,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		delete(hub.QueuedBattles, battleId)
-		battle.addPlayer(authToken.Username, pokemons, conn, 1)
+		battle.addPlayer(authToken.Username, pokemons, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
 		startBattle(battleId, battle)
 		return
 	}
@@ -130,7 +128,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	lobbyId := primitive.NewObjectID()
 	battleLobby := ws.NewLobby(lobbyId)
 	battle := NewBattle(battleLobby)
-	battle.addPlayer(authToken.Username, pokemons, conn, 0)
+	battle.addPlayer(authToken.Username, pokemons, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.QueuedBattles[lobbyId] = battle
 }
 
@@ -186,7 +184,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	battleLobby := ws.NewLobby(lobbyId)
 	battle := NewBattle(battleLobby)
-	battle.addPlayer(authToken.Username, pokemons, conn, 0)
+	battle.addPlayer(authToken.Username, pokemons, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.AwaitingLobbies[lobbyId] = battle
 	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
 }
@@ -234,7 +232,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 
 	delete(hub.AwaitingLobbies, lobbyId)
 	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
-	battle.addPlayer(authToken.Username, pokemons, conn, 1)
+	battle.addPlayer(authToken.Username, pokemons, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
 	startBattle(lobbyId, battle)
 }
 
@@ -249,7 +247,11 @@ func startBattle(battleId primitive.ObjectID, battle *Battle) {
 		log.Error(err)
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
-		commitBattleResults(battleId.Hex(), battle)
+		err := commitBattleResults(battleId.Hex(), battle)
+
+		if err != nil {
+			log.Error(err)
+		}
 	}
 
 	ws.CloseLobby(battle.Lobby)
@@ -299,6 +301,87 @@ func getTrainerPokemons(username string, r *http.Request) (map[string]*utils.Pok
 
 }
 
-func commitBattleResults(battleId string, status *Battle) {
-	log.Infof("Commiting battle results from battle %s, with winner: %s", battleId, status.Winner)
+func commitBattleResults(battleId string, battle *Battle) error {
+	log.Infof("Commiting battle results from battle %s, with winner: %s", battleId, battle.Winner)
+
+	player0 := battle.PlayersBattleStatus[0]
+	player1 := battle.PlayersBattleStatus[1]
+	done := make([]<-chan error, len(player0.trainerPokemons)+len(player1.trainerPokemons))
+
+	i := 0
+	for _, pokemon := range player0.trainerPokemons {
+		done[i] = updateTrainerPokemon(battle.PlayersBattleStatus[0].username, pokemon.Id.Hex(), *pokemon)
+		i++
+	}
+
+	for _, pokemon := range player1.trainerPokemons {
+		done[i] = updateTrainerPokemon(battle.PlayersBattleStatus[1].username, pokemon.Id.Hex(), *pokemon)
+		i++
+	}
+
+	for i = 0; i < len(done); i++ {
+		err := <-done[i]
+
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+	}
+
+	log.Info("Updated pokemons from both players")
+
+	err := sendTokenToUser(battle, 0)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	err = sendTokenToUser(battle, 1)
+
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	finishMsg := ws.Message{MsgType: battles.FINISH, MsgArgs: []string{}}
+	ws.SendMessage(finishMsg, *battle.Lobby.TrainerOutChannels[0])
+	ws.SendMessage(finishMsg, *battle.Lobby.TrainerOutChannels[1])
+	ws.CloseLobby(battle.Lobby)
+	return nil
+}
+
+func sendTokenToUser(battle *Battle, playerNr int) error {
+	err := hub.trainersClient.GetPokemonsToken(battle.PlayersBattleStatus[playerNr].username, battle.AuthTokens[playerNr])
+	log.Info("got ", hub.trainersClient.PokemonClaims)
+	if err != nil {
+		return err
+	}
+
+	toSend := make([]string, len(hub.trainersClient.PokemonTokens))
+	i := 0
+	for _, v := range hub.trainersClient.PokemonTokens {
+		toSend[i] = v
+		i++
+	}
+
+	setTokensMessage := &ws.Message{
+		MsgType: battles.SET_TOKEN,
+		MsgArgs: toSend,
+	}
+	ws.SendMessage(*setTokensMessage, *battle.Lobby.TrainerOutChannels[playerNr])
+	return nil
+}
+
+func updateTrainerPokemon(username string, pokemonId string, pokemon utils.Pokemon) <-chan error {
+	done := make(chan error)
+	go func() {
+		_, err := hub.trainersClient.UpdateTrainerPokemon(username, pokemonId, pokemon)
+		if err != nil {
+			done <- err
+		}
+		log.Infof("Updated pokemon %s from trainer %s", pokemon.Id.Hex(), username)
+		done <- nil
+	}()
+
+	return done
 }

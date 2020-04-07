@@ -16,7 +16,8 @@ const DefaultCooldown = time.Second * 2
 
 type (
 	Battle struct {
-		Lobby *ws.Lobby
+		Lobby      *ws.Lobby
+		AuthTokens [2]string
 
 		playerIds           [2]string
 		PlayersBattleStatus [2]*trainerBattleStatus
@@ -40,6 +41,7 @@ type (
 func NewBattle(lobby *ws.Lobby) *Battle {
 
 	return &Battle{
+		AuthTokens:          [2]string{},
 		PlayersBattleStatus: [2]*trainerBattleStatus{},
 		Finished:            false,
 		Winner:              "",
@@ -47,7 +49,7 @@ func NewBattle(lobby *ws.Lobby) *Battle {
 	}
 }
 
-func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, trainerConn *websocket.Conn, playerNr int) {
+func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, trainerConn *websocket.Conn, playerNr int, authToken string) {
 
 	player := &trainerBattleStatus{
 		username,
@@ -57,6 +59,7 @@ func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, 
 
 	ws.AddTrainer(b.Lobby, username, trainerConn)
 	b.PlayersBattleStatus[playerNr] = player
+	b.AuthTokens[playerNr] = authToken
 }
 
 func (b *Battle) StartBattle() (string, error) {
@@ -167,11 +170,6 @@ func (b *Battle) mainLoop() (string, error) {
 			}
 		}
 	}
-
-	finishMsg := ws.Message{MsgType: battles.FINISH, MsgArgs: []string{}}
-	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[0])
-	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[1])
-
 	return b.Winner, nil
 }
 
@@ -214,6 +212,7 @@ func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleS
 	}
 
 	selectedPokemon := message.MsgArgs[0]
+	fmt.Println("Selected pokemon")
 	pokemon, ok := issuer.trainerPokemons[selectedPokemon]
 
 	if !ok {
