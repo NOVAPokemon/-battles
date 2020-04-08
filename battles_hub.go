@@ -16,15 +16,19 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"net/http"
+	"sync"
 )
+
+type keyType = primitive.ObjectID
+type valueType = *Battle
 
 type BattleHub struct {
 	notificationClient *clients.NotificationClient
 	trainersClient     *clients.TrainersClient
 
-	AwaitingLobbies map[primitive.ObjectID]*Battle
-	QueuedBattles   map[primitive.ObjectID]*Battle
-	ongoingBattles  map[primitive.ObjectID]*Battle
+	AwaitingLobbies sync.Map
+	QueuedBattles   sync.Map
+	ongoingBattles  sync.Map
 }
 
 var hub *BattleHub
@@ -42,23 +46,23 @@ func init() {
 	hub = &BattleHub{
 		trainersClient:     clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort)),
 		notificationClient: clients.NewNotificationClient(fmt.Sprintf("%s:%d", utils.Host, utils.NotificationsPort), nil),
-		AwaitingLobbies:    make(map[primitive.ObjectID]*Battle, 100),
-		QueuedBattles:      make(map[primitive.ObjectID]*Battle, 100),
-		ongoingBattles:     make(map[primitive.ObjectID]*Battle, 100),
+		AwaitingLobbies:    sync.Map{},
+		QueuedBattles:      sync.Map{},
+		ongoingBattles:     sync.Map{},
 	}
 }
 
 func HandleGetCurrentLobbies(w http.ResponseWriter, _ *http.Request) {
-
-	var availableLobbies = make([]utils.Lobby, 0)
-
-	for k, v := range hub.QueuedBattles {
+	var availableLobbies []utils.Lobby
+	hub.QueuedBattles.Range(func(key, value interface{}) bool {
 		toAdd := utils.Lobby{
-			Id:       k,
-			Username: v.playerIds[0],
+			Id:       key.(keyType),
+			Username: value.(valueType).playerIds[0],
 		}
 		availableLobbies = append(availableLobbies, toAdd)
-	}
+
+		return true
+	})
 
 	log.Infof("Request for available lobbies, response: %+v", availableLobbies)
 	js, err := json.Marshal(availableLobbies)
@@ -111,17 +115,17 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
 
-	if len(hub.QueuedBattles) > 0 {
-		var battleId primitive.ObjectID
-		var battle *Battle
-		for k, v := range hub.QueuedBattles {
-			battleId = k
-			battle = v
-			break
-		}
-		delete(hub.QueuedBattles, battleId)
+	hasOne := false
+	hub.QueuedBattles.Range(func(key, value interface{}) bool {
+		hasOne = true
+		hub.QueuedBattles.Delete(key)
+		battle := value.(valueType)
 		battle.addPlayer(authToken.Username, pokemons, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
-		startBattle(battleId, battle)
+		startBattle(key.(keyType), battle)
+		return false
+	})
+
+	if hasOne {
 		return
 	}
 
@@ -129,7 +133,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	battleLobby := ws.NewLobby(lobbyId)
 	battle := NewBattle(battleLobby)
 	battle.addPlayer(authToken.Username, pokemons, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
-	hub.QueuedBattles[lobbyId] = battle
+	hub.QueuedBattles.Store(lobbyId, battle)
 }
 
 func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +189,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	battleLobby := ws.NewLobby(lobbyId)
 	battle := NewBattle(battleLobby)
 	battle.addPlayer(authToken.Username, pokemons, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
-	hub.AwaitingLobbies[lobbyId] = battle
+	hub.AwaitingLobbies.Store(lobbyId, battle)
 	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
 }
 
@@ -221,7 +225,8 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lobbyId, err := primitive.ObjectIDFromHex(mux.Vars(r)[api.BattleIdPathVar])
-	battle, ok := hub.AwaitingLobbies[lobbyId]
+	value, ok := hub.AwaitingLobbies.Load(lobbyId)
+	battle := value.(valueType)
 
 	if !ok {
 		log.Println(err)
@@ -230,16 +235,15 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delete(hub.AwaitingLobbies, lobbyId)
+	hub.AwaitingLobbies.Delete(lobbyId)
 	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
 	battle.addPlayer(authToken.Username, pokemons, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
 	startBattle(lobbyId, battle)
 }
 
 func startBattle(battleId primitive.ObjectID, battle *Battle) {
-
 	log.Infof("Battle %s starting...", battleId.Hex())
-	hub.ongoingBattles[battleId] = battle
+	hub.ongoingBattles.Store(battleId, battle)
 	winner, err := battle.StartBattle()
 
 	if err != nil {
@@ -255,7 +259,7 @@ func startBattle(battleId primitive.ObjectID, battle *Battle) {
 	}
 
 	ws.CloseLobby(battle.Lobby)
-	delete(hub.ongoingBattles, battleId)
+	hub.ongoingBattles.Delete(battleId)
 
 }
 
