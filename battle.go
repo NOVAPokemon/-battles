@@ -29,6 +29,7 @@ type (
 
 	trainerBattleStatus struct {
 		username        string
+		trainerStats    *utils.TrainerStats
 		trainerPokemons map[string]*utils.Pokemon
 		selectedPokemon *utils.Pokemon
 
@@ -49,10 +50,11 @@ func NewBattle(lobby *ws.Lobby) *Battle {
 	}
 }
 
-func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, trainerConn *websocket.Conn, playerNr int, authToken string) {
+func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, stats *utils.TrainerStats, trainerConn *websocket.Conn, playerNr int, authToken string) {
 
 	player := &trainerBattleStatus{
 		username,
+		stats,
 		pokemons, nil,
 		false, false, time.NewTimer(DefaultCooldown),
 	}
@@ -64,6 +66,7 @@ func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, 
 
 func (b *Battle) StartBattle() (string, error) {
 
+	b.Lobby.Started = true
 	err := b.setupLoop()
 
 	if err != nil {
@@ -85,6 +88,11 @@ func (b *Battle) setupLoop() error {
 
 	// TODO timer to break the loop if a player takes too long to select
 	players := b.PlayersBattleStatus
+
+	startMsg := ws.Message{MsgType: battles.START, MsgArgs: []string{}}
+	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[0])
+	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[1])
+	log.Info("Sent START message")
 
 	// loops until both players have selected a pokemon
 	for ; players[0].selectedPokemon == nil || players[1].selectedPokemon == nil; {
@@ -126,7 +134,15 @@ func (b *Battle) setupLoop() error {
 			}
 
 			b.handleSelectPokemon(msg, players[1], *b.Lobby.TrainerOutChannels[1], *b.Lobby.TrainerOutChannels[0])
+
+		case <-b.Lobby.EndConnectionChannels[0]:
+			log.Errorf("An error occurred with user %s", b.PlayersBattleStatus[0].username)
+			ws.CloseLobby(b.Lobby)
+		case <-b.Lobby.EndConnectionChannels[1]:
+			log.Errorf("An error occurred with user %s", b.PlayersBattleStatus[1].username)
+			ws.CloseLobby(b.Lobby)
 		}
+
 	}
 
 	log.Info("Battle setup finished")
@@ -138,11 +154,6 @@ func (b *Battle) mainLoop() (string, error) {
 
 	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[0])
 	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[1])
-
-	startMsg := ws.Message{MsgType: battles.START, MsgArgs: []string{}}
-	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[0])
-	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[1])
-	log.Info("Sent START message")
 
 	// main battle loop
 	for ; !b.Finished; {
@@ -168,8 +179,16 @@ func (b *Battle) mainLoop() (string, error) {
 			} else {
 				b.handlePlayerMove(msg, b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1], b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0])
 			}
+
+		case <-b.Lobby.EndConnectionChannels[0]:
+			log.Errorf("An error occurred with user %s", b.PlayersBattleStatus[0].username)
+			ws.CloseLobby(b.Lobby)
+		case <-b.Lobby.EndConnectionChannels[1]:
+			log.Errorf("An error occurred with user %s", b.PlayersBattleStatus[1].username)
+			ws.CloseLobby(b.Lobby)
 		}
 	}
+
 	return b.Winner, nil
 }
 
@@ -212,7 +231,6 @@ func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleS
 	}
 
 	selectedPokemon := message.MsgArgs[0]
-	fmt.Println("Selected pokemon")
 	pokemon, ok := issuer.trainerPokemons[selectedPokemon]
 
 	if !ok {
@@ -228,12 +246,9 @@ func (b *Battle) handleSelectPokemon(message *ws.Message, issuer *trainerBattleS
 	}
 
 	issuer.selectedPokemon = pokemon
-
 	toSend, err := json.Marshal(pokemon)
-
 	if err != nil {
 		log.Error(err)
-
 	}
 
 	msg := ws.Message{MsgType: battles.UPDATE_ADVERSARY_POKEMON, MsgArgs: []string{string(toSend)}}
@@ -361,8 +376,22 @@ func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, issuerChan chan *
 	}
 }
 
-func (b *Battle) handlePlayerCooldownTimer(player *trainerBattleStatus) {
+func (b *Battle) FinishBattle(winner string) {
 
+	finishMsg := ws.Message{MsgType: battles.FINISH, MsgArgs: []string{winner}}
+
+	b.Lobby.Finished = true
+
+	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[0])
+	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[1])
+
+	<-b.Lobby.EndConnectionChannels[0]
+	<-b.Lobby.EndConnectionChannels[1]
+
+	ws.CloseLobby(b.Lobby)
+}
+
+func (b *Battle) handlePlayerCooldownTimer(player *trainerBattleStatus) {
 	for ; !b.Finished; {
 		<-player.cdTimer.C
 		player.cooldown = false
