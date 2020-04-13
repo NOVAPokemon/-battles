@@ -22,9 +22,10 @@ type (
 		playerIds           [2]string
 		PlayersBattleStatus [2]*trainerBattleStatus
 
-		Winner    string
-		Selecting bool
-		Finished  bool
+		Winner       string
+		StartChannel chan struct{}
+		Selecting    bool
+		Finished     bool
 	}
 
 	trainerBattleStatus struct {
@@ -45,6 +46,7 @@ func NewBattle(lobby *ws.Lobby) *Battle {
 		AuthTokens:          [2]string{},
 		PlayersBattleStatus: [2]*trainerBattleStatus{},
 		Finished:            false,
+		StartChannel:        make(chan struct{}),
 		Winner:              "",
 		Lobby:               lobby,
 	}
@@ -66,6 +68,7 @@ func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, 
 
 func (b *Battle) StartBattle() (string, error) {
 
+	close(b.StartChannel)
 	b.Lobby.Started = true
 	err := b.setupLoop()
 
