@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/NOVAPokemon/utils"
+	"github.com/NOVAPokemon/utils/pokemons"
 	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
 	"github.com/gorilla/websocket"
@@ -30,8 +31,8 @@ type (
 	trainerBattleStatus struct {
 		username        string
 		trainerStats    *utils.TrainerStats
-		trainerPokemons map[string]*utils.Pokemon
-		selectedPokemon *utils.Pokemon
+		trainerPokemons map[string]*pokemons.Pokemon
+		selectedPokemon *pokemons.Pokemon
 
 		defending bool
 		cooldown  bool
@@ -50,7 +51,7 @@ func NewBattle(lobby *ws.Lobby) *Battle {
 	}
 }
 
-func (b *Battle) addPlayer(username string, pokemons map[string]*utils.Pokemon, stats *utils.TrainerStats, trainerConn *websocket.Conn, playerNr int, authToken string) {
+func (b *Battle) addPlayer(username string, pokemons map[string]*pokemons.Pokemon, stats *utils.TrainerStats, trainerConn *websocket.Conn, playerNr int, authToken string) {
 
 	player := &trainerBattleStatus{
 		username,

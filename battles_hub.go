@@ -8,6 +8,7 @@ import (
 	"github.com/NOVAPokemon/utils/clients"
 	"github.com/NOVAPokemon/utils/experience"
 	"github.com/NOVAPokemon/utils/notifications"
+	"github.com/NOVAPokemon/utils/pokemons"
 	"github.com/NOVAPokemon/utils/tokens"
 	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
@@ -106,7 +107,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infof("New player queued for battle: %s", authToken.Username)
-	statsToken, pokemons, err := extractTokensForBattle(authToken.Username, r)
+	statsToken, pokemonsForBattle, err := extractTokensForBattle(authToken.Username, r)
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
 		_ = conn.Close()
@@ -114,7 +115,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info("Player pokemons:")
-	for _, p := range pokemons {
+	for _, p := range pokemonsForBattle {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
 
@@ -123,7 +124,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		hasOne = true
 		hub.QueuedBattles.Delete(key)
 		battle := value.(valueType)
-		battle.addPlayer(authToken.Username, pokemons, statsToken, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
+		battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
 		startBattle(key.(keyType), battle)
 		return false
 	})
@@ -135,7 +136,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	lobbyId := primitive.NewObjectID()
 	battleLobby := ws.NewLobby(lobbyId)
 	battle := NewBattle(battleLobby)
-	battle.addPlayer(authToken.Username, pokemons, statsToken, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
+	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.QueuedBattles.Store(lobbyId, battle)
 
 	go func() {
@@ -172,7 +173,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statsToken, pokemons, err := extractTokensForBattle(authToken.Username, r)
+	statsToken, pokemonsForBattle, err := extractTokensForBattle(authToken.Username, r)
 
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
@@ -181,7 +182,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infof("Player pokemons:")
-	for _, p := range pokemons {
+	for _, p := range pokemonsForBattle {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
 
@@ -206,7 +207,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	battleLobby := ws.NewLobby(lobbyId)
 	battle := NewBattle(battleLobby)
-	battle.addPlayer(authToken.Username, pokemons, statsToken, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
+	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.AwaitingLobbies.Store(lobbyId, battle)
 	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
 
@@ -253,7 +254,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statsToken, pokemons, err := extractTokensForBattle(authToken.Username, r)
+	statsToken, pokemonsForBattle, err := extractTokensForBattle(authToken.Username, r)
 
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
@@ -262,7 +263,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infof("Player pokemons:")
-	for _, p := range pokemons {
+	for _, p := range pokemonsForBattle {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
 
@@ -278,7 +279,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 
 	hub.AwaitingLobbies.Delete(lobbyId)
 	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
-	battle.addPlayer(authToken.Username, pokemons, statsToken, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
+	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
 	startBattle(lobbyId, battle)
 }
 
@@ -306,7 +307,7 @@ func startBattle(battleId primitive.ObjectID, battle *Battle) {
 	log.Warnf("Active goroutines: %d", runtime.NumGoroutine())
 }
 
-func extractTokensForBattle(username string, r *http.Request) (*utils.TrainerStats, map[string]*utils.Pokemon, error) {
+func extractTokensForBattle(username string, r *http.Request) (*utils.TrainerStats, map[string]*pokemons.Pokemon, error) {
 
 	pokemonTkns, err := tokens.ExtractAndVerifyPokemonTokens(r.Header)
 
@@ -337,11 +338,11 @@ func extractTokensForBattle(username string, r *http.Request) (*utils.TrainerSta
 		return nil, nil, errors.New("invalid token")
 	}
 
-	pokemons := make(map[string]*utils.Pokemon, len(pokemonTkns))
+	pokemonsInToken := make(map[string]*pokemons.Pokemon, len(pokemonTkns))
 	pokemonHashes := make(map[string][]byte, len(pokemonTkns))
 	for _, pokemonTkn := range pokemonTkns {
 		pokemonId := pokemonTkn.Pokemon.Id.Hex()
-		pokemons[pokemonId] = &pokemonTkn.Pokemon
+		pokemonsInToken[pokemonId] = &pokemonTkn.Pokemon
 		pokemonHashes[pokemonId] = pokemonTkn.PokemonHash
 	}
 
@@ -356,7 +357,7 @@ func extractTokensForBattle(username string, r *http.Request) (*utils.TrainerSta
 		return nil, nil, ErrInvalidPokemonHashes
 	}
 
-	return &trainerStatsToken.TrainerStats, pokemons, nil
+	return &trainerStatsToken.TrainerStats, pokemonsInToken, nil
 }
 
 func commitBattleResults(battleId string, battle *Battle) error {
@@ -442,7 +443,7 @@ func sendPokemonTokensToUser(battle *Battle, playerNr int) error {
 	return nil
 }
 
-func updateTrainerPokemon(username string, pokemonId string, pokemon utils.Pokemon) <-chan error {
+func updateTrainerPokemon(username string, pokemonId string, pokemon pokemons.Pokemon) <-chan error {
 	done := make(chan error)
 	go func() {
 		_, err := hub.trainersClient.UpdateTrainerPokemon(username, pokemonId, pokemon)
