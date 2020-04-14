@@ -9,11 +9,10 @@ import (
 	"github.com/NOVAPokemon/utils/websockets/battles"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
-	"math/rand"
 	"time"
 )
 
-const DefaultCooldown = time.Second * 2
+const DefaultCooldown = time.Millisecond * 500
 
 type (
 	Battle struct {
@@ -330,7 +329,7 @@ func (b *Battle) handleAttackMove(issuer *trainerBattleStatus, issuerChan chan *
 
 	} else {
 
-		otherPlayer.selectedPokemon.HP -= int(float32(issuer.selectedPokemon.Damage) * rand.Float32())
+		otherPlayer.selectedPokemon.HP -= issuer.selectedPokemon.Damage
 
 		if otherPlayer.selectedPokemon.HP < 0 {
 			otherPlayer.selectedPokemon.HP = 0
