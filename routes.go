@@ -11,7 +11,6 @@ const AcceptChallengeName = "JOIN_BATTLE"
 const QueueForBattleName = "QUEUE_FOR_BATTLE"
 
 const GET = "GET"
-const POST = "POST"
 
 var routes = utils.Routes{
 	utils.Route{

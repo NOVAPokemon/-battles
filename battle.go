@@ -73,7 +73,7 @@ func (b *Battle) StartBattle() (string, error) {
 
 func (b *Battle) setupLoop() error {
 	players := b.PlayersBattleStatus
-	startMsg := ws.Message{MsgType: battles.START, MsgArgs: []string{}}
+	startMsg := ws.Message{MsgType: battles.Start, MsgArgs: []string{}}
 	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[0])
 	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[1])
 	log.Info("Sent START message")
@@ -145,13 +145,13 @@ func (b *Battle) handlePlayerMove(msgStr *string, issuer *battles.TrainerBattleS
 
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
-		errMsg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{battles.ErrInvalidMessageFormat.Error()}}
+		errMsg := ws.Message{MsgType: battles.Error, MsgArgs: []string{battles.ErrInvalidMessageFormat.Error()}}
 		ws.SendMessage(errMsg, issuerChan)
 		return
 	}
 	switch message.MsgType {
 
-	case battles.ATTACK:
+	case battles.Attack:
 		if changed, err := battles.HandleAttackMove(issuer, issuerChan, otherPlayer.Defending, otherPlayer.SelectedPokemon); changed && err == nil {
 			allPokemonsDead := true
 			for _, pokemon := range otherPlayer.TrainerPokemons {
@@ -183,19 +183,19 @@ func (b *Battle) handlePlayerMove(msgStr *string, issuer *battles.TrainerBattleS
 			battles.UpdateAdversaryOfPokemonChanges(*otherPlayer.SelectedPokemon, otherPlayerChan)
 		}
 		break
-	case battles.DEFEND:
+	case battles.Defend:
 		if err := battles.HandleDefendMove(issuer, issuerChan); err == nil {
 			updateAdversaryOfDefendingMove(otherPlayerChan)
 		}
 		break
 
-	case battles.USE_ITEM:
+	case battles.UseItem:
 		if err := battles.HandleUseItem(message, issuer, issuerChan); err == nil {
 			battles.UpdateAdversaryOfPokemonChanges(*issuer.SelectedPokemon, otherPlayerChan)
 		}
 		break
 
-	case battles.SELECT_POKEMON:
+	case battles.SelectPokemon:
 		if err := battles.HandleSelectPokemon(msgStr, issuer, issuerChan); err == nil {
 			battles.UpdateAdversaryOfPokemonChanges(*issuer.SelectedPokemon, otherPlayerChan)
 		}
@@ -204,20 +204,20 @@ func (b *Battle) handlePlayerMove(msgStr *string, issuer *battles.TrainerBattleS
 
 	default:
 		log.Errorf("cannot handle message type: %s ", message.MsgType)
-		msg := ws.Message{MsgType: battles.ERROR, MsgArgs: []string{fmt.Sprintf(battles.ErrInvalidMessageType.Error())}}
+		msg := ws.Message{MsgType: battles.Error, MsgArgs: []string{fmt.Sprintf(battles.ErrInvalidMessageType.Error())}}
 		ws.SendMessage(msg, issuerChan)
 		return
 	}
 }
 
 func updateAdversaryOfDefendingMove(adversaryChan chan *string) {
-	msg := ws.Message{MsgType: battles.ADVERSARY_DEFENDING, MsgArgs: []string{battles.DefaultCooldown.String()}}
+	msg := ws.Message{MsgType: battles.AdversaryDefending, MsgArgs: []string{battles.DefaultCooldown.String()}}
 	ws.SendMessage(msg, adversaryChan)
 }
 
 func (b *Battle) FinishBattle(winner string) {
 	b.Lobby.Finished = true
-	finishMsg := ws.Message{MsgType: battles.FINISH, MsgArgs: []string{winner}}
+	finishMsg := ws.Message{MsgType: battles.Finish, MsgArgs: []string{winner}}
 	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[0])
 	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[1])
 

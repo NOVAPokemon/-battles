@@ -463,7 +463,7 @@ func removeUsedItems(trainersClient *clients.TrainersClient, battle *Battle, pla
 
 	toSend := []string{tokens.ItemsTokenHeaderName, trainersClient.ItemsToken}
 	setTokensMessage := &ws.Message{
-		MsgType: battles.SET_TOKEN,
+		MsgType: battles.SetToken,
 		MsgArgs: toSend,
 	}
 	ws.SendMessage(*setTokensMessage, *battle.Lobby.TrainerOutChannels[playerNr])
@@ -494,7 +494,7 @@ func updateTrainerPokemons(trainersClient *clients.TrainersClient, battle *Battl
 	}
 
 	setTokensMessage := &ws.Message{
-		MsgType: battles.SET_TOKEN,
+		MsgType: battles.SetToken,
 		MsgArgs: toSend,
 	}
 	ws.SendMessage(*setTokensMessage, *battle.Lobby.TrainerOutChannels[playerNr])
@@ -515,7 +515,7 @@ func addExperienceToPlayer(trainersClient *clients.TrainersClient, battle *Battl
 
 	toSend := []string{tokens.StatsTokenHeaderName, trainersClient.TrainerStatsToken}
 	setTokensMessage := &ws.Message{
-		MsgType: battles.SET_TOKEN,
+		MsgType: battles.SetToken,
 		MsgArgs: toSend,
 	}
 	ws.SendMessage(*setTokensMessage, *battle.Lobby.TrainerOutChannels[playerNr])
