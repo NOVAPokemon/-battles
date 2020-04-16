@@ -44,7 +44,7 @@ var (
 	ErrPlayerNotOnline      = errors.New("Challenged player not online")
 	ErrNotEnoughPokemons    = errors.New("Not enough pokemons")
 	ErrTooManyPokemons      = errors.New("Not enough pokemons")
-	ErrInvalidPokemonHashes = errors.New("Ivalid pokemon hashes")
+	ErrInvalidPokemonHashes = errors.New("Invalid pokemon hashes")
 )
 
 func init() {
@@ -61,7 +61,7 @@ func HandleGetCurrentLobbies(w http.ResponseWriter, _ *http.Request) {
 	hub.QueuedBattles.Range(func(key, value interface{}) bool {
 		toAdd := utils.Lobby{
 			Id:       key.(keyType),
-			Username: value.(valueType).PlayersBattleStatus[0].username,
+			Username: value.(valueType).PlayersBattleStatus[0].Username,
 		}
 		availableLobbies = append(availableLobbies, toAdd)
 
@@ -109,7 +109,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	trainersClient := clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort), httpClient)
 
 	log.Infof("New player queued for battle: %s", authToken.Username)
-	trainerItems, statsToken, pokemonsForBattle, err := extractTokensForBattle(trainersClient, authToken.Username, r)
+	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient, authToken.Username, r)
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
 		_ = conn.Close()
@@ -181,7 +181,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trainersClient := clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort), httpClient)
-	trainerItems, statsToken, pokemonsForBattle, err := extractTokensForBattle(trainersClient, authToken.Username, r)
+	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient, authToken.Username, r)
 
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
@@ -268,7 +268,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trainersClient := clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort), httpClient)
-	trainerItems, statsToken, pokemonsForBattle, err := extractTokensForBattle(trainersClient, authToken.Username, r)
+	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient, authToken.Username, r)
 
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
@@ -321,7 +321,7 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 	log.Warnf("Active goroutines: %d", runtime.NumGoroutine())
 }
 
-func extractTokensForBattle(trainersClient *clients.TrainersClient, username string, r *http.Request) (map[string]items.Item, *utils.TrainerStats, map[string]*pokemons.Pokemon, error) {
+func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, username string, r *http.Request) (map[string]items.Item, *utils.TrainerStats, map[string]*pokemons.Pokemon, error) {
 
 	pokemonTkns, err := tokens.ExtractAndVerifyPokemonTokens(r.Header)
 
@@ -455,7 +455,7 @@ func removeUsedItems(trainersClient *clients.TrainersClient, battle *Battle, pla
 		itemIds = append(itemIds, itemId)
 	}
 
-	_, err := trainersClient.RemoveItemsFromBag(player.username, itemIds, battle.AuthTokens[playerNr])
+	_, err := trainersClient.RemoveItemsFromBag(player.Username, itemIds, battle.AuthTokens[playerNr])
 
 	if err != nil {
 		return err
@@ -477,11 +477,11 @@ func updateTrainerPokemons(trainersClient *clients.TrainersClient, battle *Battl
 	//player 0
 	player := battle.PlayersBattleStatus[playerNr]
 
-	for id, pokemon := range player.trainerPokemons {
-		pokemon.XP += experience.GetPokemonExperienceGainFromBattle(player.username == battle.Winner)
-		_, err := trainersClient.UpdateTrainerPokemon(player.username, id, *pokemon)
+	for id, pokemon := range player.TrainerPokemons {
+		pokemon.XP += experience.GetPokemonExperienceGainFromBattle(player.Username == battle.Winner)
+		_, err := trainersClient.UpdateTrainerPokemon(player.Username, id, *pokemon)
 		if err != nil {
-			log.Errorf("An error occurred updating pokemons from user %s : %s", player.username, err.Error())
+			log.Errorf("An error occurred updating pokemons from user %s : %s", player.Username, err.Error())
 		}
 	}
 
@@ -504,10 +504,10 @@ func updateTrainerPokemons(trainersClient *clients.TrainersClient, battle *Battl
 func addExperienceToPlayer(trainersClient *clients.TrainersClient, battle *Battle, playerNr int) error {
 
 	player := battle.PlayersBattleStatus[playerNr]
-	stats := player.trainerStats
+	stats := player.TrainerStats
 
-	stats.XP += experience.GetTrainerExperienceGainFromBattle(battle.Winner == player.username)
-	_, err := trainersClient.UpdateTrainerStats(player.username, *stats, battle.AuthTokens[playerNr])
+	stats.XP += experience.GetTrainerExperienceGainFromBattle(battle.Winner == player.Username)
+	_, err := trainersClient.UpdateTrainerStats(player.Username, *stats, battle.AuthTokens[playerNr])
 
 	if err != nil {
 		return err
