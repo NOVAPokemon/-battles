@@ -399,39 +399,43 @@ func commitBattleResults(trainersClient *clients.TrainersClient, battleId string
 
 	log.Infof("Committing battle results from battle %s, with winner: %s", battleId, battle.Winner)
 
-	err := updateTrainerPokemons(trainersClient, battle, 0)
+	experienceGain := experience.GetPokemonExperienceGainFromBattle(battle.Winner == battle.PlayersBattleStatus[0].Username)
+	err := UpdateTrainerPokemons(trainersClient, *battle.PlayersBattleStatus[0], battle.AuthTokens[0], *battle.Lobby.TrainerOutChannels[0], experienceGain)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
-	err = updateTrainerPokemons(trainersClient, battle, 1)
+	experienceGain = experience.GetPokemonExperienceGainFromBattle(battle.Winner == battle.PlayersBattleStatus[1].Username)
+	err = UpdateTrainerPokemons(trainersClient, *battle.PlayersBattleStatus[1], battle.AuthTokens[1], *battle.Lobby.TrainerOutChannels[1], experienceGain)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
 	//Update trainer stats: add experience
-	err = addExperienceToPlayer(trainersClient, battle, 0)
+	experienceGain = experience.GetTrainerExperienceGainFromBattle(battle.Winner == battle.PlayersBattleStatus[0].Username)
+	err = AddExperienceToPlayer(trainersClient, *battle.PlayersBattleStatus[0], battle.AuthTokens[0], *battle.Lobby.TrainerOutChannels[0], experienceGain)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
-	err = addExperienceToPlayer(trainersClient, battle, 1)
+	experienceGain = experience.GetTrainerExperienceGainFromBattle(battle.Winner == battle.PlayersBattleStatus[1].Username)
+	err = AddExperienceToPlayer(trainersClient, *battle.PlayersBattleStatus[1], battle.AuthTokens[1], *battle.Lobby.TrainerOutChannels[1], experienceGain)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
 	// Update trainer items, removing the items that were used during the battle
-	err = removeUsedItems(trainersClient, battle, 0)
+	err = RemoveUsedItems(trainersClient, *battle.PlayersBattleStatus[0], battle.AuthTokens[0], *battle.Lobby.TrainerOutChannels[0])
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
-	err = removeUsedItems(trainersClient, battle, 1)
+	err = RemoveUsedItems(trainersClient, *battle.PlayersBattleStatus[1], battle.AuthTokens[1], *battle.Lobby.TrainerOutChannels[1])
 	if err != nil {
 		log.Error(err)
 		return err
@@ -440,9 +444,8 @@ func commitBattleResults(trainersClient *clients.TrainersClient, battleId string
 	return nil
 }
 
-func removeUsedItems(trainersClient *clients.TrainersClient, battle *Battle, playerNr int) error {
+func RemoveUsedItems(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus, authToken string, outChan chan *string) error {
 
-	player := battle.PlayersBattleStatus[playerNr]
 	usedItems := player.UsedItems
 
 	if len(usedItems) == 0 {
@@ -455,7 +458,7 @@ func removeUsedItems(trainersClient *clients.TrainersClient, battle *Battle, pla
 		itemIds = append(itemIds, itemId)
 	}
 
-	_, err := trainersClient.RemoveItemsFromBag(player.Username, itemIds, battle.AuthTokens[playerNr])
+	_, err := trainersClient.RemoveItemsFromBag(player.Username, itemIds, authToken)
 
 	if err != nil {
 		return err
@@ -466,19 +469,19 @@ func removeUsedItems(trainersClient *clients.TrainersClient, battle *Battle, pla
 		MsgType: battles.SetToken,
 		MsgArgs: toSend,
 	}
-	ws.SendMessage(*setTokensMessage, *battle.Lobby.TrainerOutChannels[playerNr])
+	ws.SendMessage(*setTokensMessage, outChan)
 
 	return nil
 }
 
-func updateTrainerPokemons(trainersClient *clients.TrainersClient, battle *Battle, playerNr int) error {
+func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus, authToken string, outChan chan *string, xpAmount float64) error {
 
 	// updates pokemon status after battle: adds XP and updates HP
 	//player 0
-	player := battle.PlayersBattleStatus[playerNr]
 
 	for id, pokemon := range player.TrainerPokemons {
-		pokemon.XP += experience.GetPokemonExperienceGainFromBattle(player.Username == battle.Winner)
+		pokemon.XP += xpAmount
+		pokemon.HP = pokemon.MaxHP
 		_, err := trainersClient.UpdateTrainerPokemon(player.Username, id, *pokemon)
 		if err != nil {
 			log.Errorf("An error occurred updating pokemons from user %s : %s", player.Username, err.Error())
@@ -497,17 +500,15 @@ func updateTrainerPokemons(trainersClient *clients.TrainersClient, battle *Battl
 		MsgType: battles.SetToken,
 		MsgArgs: toSend,
 	}
-	ws.SendMessage(*setTokensMessage, *battle.Lobby.TrainerOutChannels[playerNr])
+	ws.SendMessage(*setTokensMessage, outChan)
 	return nil
 }
 
-func addExperienceToPlayer(trainersClient *clients.TrainersClient, battle *Battle, playerNr int) error {
+func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus, authToken string, outChan chan *string, XPAmount float64) error {
 
-	player := battle.PlayersBattleStatus[playerNr]
 	stats := player.TrainerStats
-
-	stats.XP += experience.GetTrainerExperienceGainFromBattle(battle.Winner == player.Username)
-	_, err := trainersClient.UpdateTrainerStats(player.Username, *stats, battle.AuthTokens[playerNr])
+	stats.XP += XPAmount
+	_, err := trainersClient.UpdateTrainerStats(player.Username, *stats, authToken)
 
 	if err != nil {
 		return err
@@ -518,6 +519,6 @@ func addExperienceToPlayer(trainersClient *clients.TrainersClient, battle *Battl
 		MsgType: battles.SetToken,
 		MsgArgs: toSend,
 	}
-	ws.SendMessage(*setTokensMessage, *battle.Lobby.TrainerOutChannels[playerNr])
+	ws.SendMessage(*setTokensMessage, outChan)
 	return nil
 }

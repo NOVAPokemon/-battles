@@ -43,7 +43,8 @@ func (b *Battle) addPlayer(username string, pokemons map[string]*pokemons.Pokemo
 		TrainerStats:    stats,
 		TrainerPokemons: pokemons,
 		TrainerItems:    trainerItems, CdTimer: time.NewTimer(battles.DefaultCooldown),
-		UsedItems: make(map[string]items.Item),
+		AllPokemonsDead: false,
+		UsedItems:       make(map[string]items.Item),
 	}
 	ws.AddTrainer(b.Lobby, username, trainerConn)
 	b.PlayersBattleStatus[playerNr] = player
@@ -111,8 +112,6 @@ func (b *Battle) setupLoop() error {
 }
 
 func (b *Battle) mainLoop() (string, error) {
-	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[0])
-	go b.handlePlayerCooldownTimer(b.PlayersBattleStatus[1])
 	// main battle loop
 	for ; !b.Finished; {
 		b.logBattleStatus()
@@ -125,6 +124,14 @@ func (b *Battle) mainLoop() (string, error) {
 			if ok {
 				b.handlePlayerMove(msgStr, b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1], b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0])
 			}
+		case <-b.PlayersBattleStatus[0].CdTimer.C:
+			b.PlayersBattleStatus[0].Cooldown = false
+			b.PlayersBattleStatus[0].Defending = false
+			log.Warn("Removed player 0 Cooldown status")
+		case <-b.PlayersBattleStatus[1].CdTimer.C:
+			b.PlayersBattleStatus[1].Cooldown = false
+			b.PlayersBattleStatus[1].Defending = false
+			log.Warn("Removed player 1 Cooldown status")
 		case <-b.Lobby.EndConnectionChannels[0]:
 			err := fmt.Sprintf("An error occurred with user %s", b.PlayersBattleStatus[0].Username)
 			log.Error(err)
@@ -153,15 +160,7 @@ func (b *Battle) handlePlayerMove(msgStr *string, issuer *battles.TrainerBattleS
 
 	case battles.Attack:
 		if changed, err := battles.HandleAttackMove(issuer, issuerChan, otherPlayer.Defending, otherPlayer.SelectedPokemon); changed && err == nil {
-			allPokemonsDead := true
-			for _, pokemon := range otherPlayer.TrainerPokemons {
-				if pokemon.HP > 0 {
-					allPokemonsDead = false
-					break
-				}
-			}
-
-			if allPokemonsDead {
+			if issuer.AllPokemonsDead {
 				// battle is finished
 
 				log.Info("--------------BATTLE ENDED---------------")
@@ -199,7 +198,6 @@ func (b *Battle) handlePlayerMove(msgStr *string, issuer *battles.TrainerBattleS
 		if err := battles.HandleSelectPokemon(msgStr, issuer, issuerChan); err == nil {
 			battles.UpdateAdversaryOfPokemonChanges(*issuer.SelectedPokemon, otherPlayerChan)
 		}
-
 		break
 
 	default:
@@ -224,16 +222,6 @@ func (b *Battle) FinishBattle(winner string) {
 	<-b.Lobby.EndConnectionChannels[0]
 	<-b.Lobby.EndConnectionChannels[1]
 	ws.CloseLobby(b.Lobby)
-}
-
-func (b *Battle) handlePlayerCooldownTimer(player *battles.TrainerBattleStatus) {
-
-	for ; !b.Finished; {
-		<-player.CdTimer.C
-		player.Cooldown = false
-		player.Defending = false
-		log.Warn("Removed Cooldown status")
-	}
 }
 
 func (b *Battle) logBattleStatus() {
