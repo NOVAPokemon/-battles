@@ -3,6 +3,7 @@ module github.com/NOVAPokemon/battles
 go 1.13
 
 require (
+	github.com/NOVAPokemon/gym v0.0.0-20200420143324-796300cd2356 // indirect
 	github.com/NOVAPokemon/utils v0.0.64
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
