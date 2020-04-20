@@ -202,6 +202,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		Username: challengedPlayer,
 		Type:     notifications.ChallengeToBattle,
 		Content:  []byte(lobbyId.Hex()),
+		TimestampEmitted: ws.MakeTimestamp(),
 	}
 
 	log.Infof("Sending notification: Id:%s Content:%s to %s", toSend.Id.Hex(), string(toSend.Content), toSend.Username)
