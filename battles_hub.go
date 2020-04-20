@@ -464,13 +464,11 @@ func RemoveUsedItems(trainersClient *clients.TrainersClient, player battles.Trai
 		return err
 	}
 
-	toSend := []string{tokens.ItemsTokenHeaderName, trainersClient.ItemsToken}
-	setTokensMessage := &ws.Message{
-		MsgType: battles.SetToken,
-		MsgArgs: toSend,
-	}
+	setTokensMessage := battles.SetTokenMessage{
+		TokenField:   tokens.ItemsTokenHeaderName,
+		TokensString: []string{trainersClient.ItemsToken},
+	}.SerializeToWSMessage()
 	ws.SendMessage(*setTokensMessage, outChan)
-
 	return nil
 }
 
@@ -488,18 +486,17 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 		}
 	}
 
-	toSend := make([]string, len(trainersClient.PokemonTokens)+1)
-	toSend[0] = tokens.PokemonsTokenHeaderName
-	i := 1
+	toSend := make([]string, len(trainersClient.PokemonTokens))
+	i := 0
 	for _, v := range trainersClient.PokemonTokens {
 		toSend[i] = v
 		i++
 	}
 
-	setTokensMessage := &ws.Message{
-		MsgType: battles.SetToken,
-		MsgArgs: toSend,
-	}
+	setTokensMessage := battles.SetTokenMessage{
+		TokenField:   tokens.PokemonsTokenHeaderName,
+		TokensString: toSend,
+	}.SerializeToWSMessage()
 	ws.SendMessage(*setTokensMessage, outChan)
 	return nil
 }
@@ -514,11 +511,10 @@ func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battle
 		return err
 	}
 
-	toSend := []string{tokens.StatsTokenHeaderName, trainersClient.TrainerStatsToken}
-	setTokensMessage := &ws.Message{
-		MsgType: battles.SetToken,
-		MsgArgs: toSend,
-	}
+	setTokensMessage := battles.SetTokenMessage{
+		TokenField:   tokens.StatsTokenHeaderName,
+		TokensString: []string{trainersClient.TrainerStatsToken},
+	}.SerializeToWSMessage()
 	ws.SendMessage(*setTokensMessage, outChan)
 	return nil
 }

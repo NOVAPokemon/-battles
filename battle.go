@@ -74,9 +74,9 @@ func (b *Battle) StartBattle() (string, error) {
 
 func (b *Battle) setupLoop() error {
 	players := b.PlayersBattleStatus
-	startMsg := ws.Message{MsgType: battles.Start, MsgArgs: []string{}}
-	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[0])
-	ws.SendMessage(startMsg, *b.Lobby.TrainerOutChannels[1])
+	startMsg := battles.StartMessage{}.SerializeToWSMessage()
+	ws.SendMessage(*startMsg, *b.Lobby.TrainerOutChannels[0])
+	ws.SendMessage(*startMsg, *b.Lobby.TrainerOutChannels[1])
 	log.Info("Sent START message")
 
 	// loops until both players have selected a pokemon
@@ -85,13 +85,10 @@ func (b *Battle) setupLoop() error {
 		select {
 
 		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
-			if err := battles.HandleSelectPokemon(msgStr, players[0], *b.Lobby.TrainerOutChannels[0]); err != nil {
-				battles.UpdateAdversaryOfPokemonChanges(* players[0].SelectedPokemon, *b.Lobby.TrainerOutChannels[1])
-			}
+			b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0], *b.Lobby.TrainerOutChannels[1])
 		case msgStr := <-*b.Lobby.TrainerInChannels[1]:
-			if err := battles.HandleSelectPokemon(msgStr, players[1], *b.Lobby.TrainerOutChannels[1]); err != nil {
-				battles.UpdateAdversaryOfPokemonChanges(* players[1].SelectedPokemon, *b.Lobby.TrainerOutChannels[0])
-			}
+			b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1], *b.Lobby.TrainerOutChannels[0])
+
 		case <-b.Lobby.EndConnectionChannels[0]:
 			err := fmt.Sprintf("An error occurred with user %s", b.PlayersBattleStatus[0].Username)
 			log.Error(err)
@@ -113,16 +110,16 @@ func (b *Battle) setupLoop() error {
 
 func (b *Battle) mainLoop() (string, error) {
 	// main battle loop
-	for ; !b.Finished; {
+	for !b.Finished {
 		b.logBattleStatus()
 		select {
 		case msgStr, ok := <-*b.Lobby.TrainerInChannels[0]:
 			if ok {
-				b.handlePlayerMove(msgStr, b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0], b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1])
+				b.handlePlayerMessage(msgStr, b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0], b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1])
 			}
 		case msgStr, ok := <-*b.Lobby.TrainerInChannels[1]:
 			if ok {
-				b.handlePlayerMove(msgStr, b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1], b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0])
+				b.handlePlayerMessage(msgStr, b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1], b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0])
 			}
 		case <-b.PlayersBattleStatus[0].CdTimer.C:
 			b.PlayersBattleStatus[0].Cooldown = false
@@ -135,32 +132,71 @@ func (b *Battle) mainLoop() (string, error) {
 		case <-b.Lobby.EndConnectionChannels[0]:
 			err := fmt.Sprintf("An error occurred with user %s", b.PlayersBattleStatus[0].Username)
 			log.Error(err)
-			ws.CloseLobby(b.Lobby)
 			return "", errors.New(err)
 		case <-b.Lobby.EndConnectionChannels[1]:
 			err := fmt.Sprintf("An error occurred with user %s", b.PlayersBattleStatus[1].Username)
 			log.Error(err)
-			ws.CloseLobby(b.Lobby)
 			return "", errors.New(err)
 		}
 	}
 	return b.Winner, nil
 }
 
+func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.TrainerBattleStatus, issuerChan chan *string, otherPlayerChan chan *string) {
+	message, err := ws.ParseMessage(msgStr)
+	if err != nil {
+		ws.SendMessage(
+			*battles.ErrorMessage{
+				Info:  fmt.Sprintf(battles.ErrInvalidMessageFormat.Error()),
+				Fatal: false,
+			}.SerializeToWSMessage(), issuerChan)
+		return
+	}
+
+	if message.MsgType != battles.SelectPokemon {
+		ws.SendMessage(
+			*battles.ErrorMessage{
+				Info:  fmt.Sprintf(battles.ErrPokemonSelectionPhase.Error()),
+				Fatal: false,
+			}.SerializeToWSMessage(), issuerChan)
+		return
+	}
+
+	battles.HandleSelectPokemon(message, issuer, issuerChan)
+}
+
 // handles the reception of a move from a player.
-func (b *Battle) handlePlayerMove(msgStr *string, issuer *battles.TrainerBattleStatus, issuerChan chan *string, otherPlayer *battles.TrainerBattleStatus, otherPlayerChan chan *string) {
+func (b *Battle) handlePlayerMessage(msgStr *string, issuer *battles.TrainerBattleStatus, issuerChan chan *string, otherPlayer *battles.TrainerBattleStatus, otherPlayerChan chan *string) {
 
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
-		errMsg := ws.Message{MsgType: battles.Error, MsgArgs: []string{battles.ErrInvalidMessageFormat.Error()}}
-		ws.SendMessage(errMsg, issuerChan)
+		ws.SendMessage(
+			*battles.ErrorMessage{
+				Info:  fmt.Sprintf(battles.ErrInvalidMessageType.Error()),
+				Fatal: false,
+			}.SerializeToWSMessage(), issuerChan)
 		return
 	}
+
 	switch message.MsgType {
 
 	case battles.Attack:
-		if changed, err := battles.HandleAttackMove(issuer, issuerChan, otherPlayer.Defending, otherPlayer.SelectedPokemon); changed && err == nil {
-			if issuer.AllPokemonsDead {
+		if changed := battles.HandleAttackMove(issuer, issuerChan, otherPlayer.Defending, otherPlayer.SelectedPokemon); changed {
+
+			if otherPlayer.SelectedPokemon.HP == 0 {
+				allDead := true
+				for _, pokemon := range otherPlayer.TrainerPokemons {
+					if pokemon.HP > 0 {
+						allDead = false
+						break
+					}
+				}
+				if allDead {
+					otherPlayer.AllPokemonsDead = true
+				}
+			}
+
+			if otherPlayer.AllPokemonsDead {
 				// battle is finished
 
 				log.Info("--------------BATTLE ENDED---------------")
@@ -178,46 +214,39 @@ func (b *Battle) handlePlayerMove(msgStr *string, issuer *battles.TrainerBattleS
 				b.Finished = true
 				b.Winner = issuer.Username
 			}
-			battles.UpdateTrainerPokemon(*otherPlayer.SelectedPokemon, otherPlayerChan)
-			battles.UpdateAdversaryOfPokemonChanges(*otherPlayer.SelectedPokemon, otherPlayerChan)
+			battles.UpdateTrainerPokemon(*otherPlayer.SelectedPokemon, otherPlayerChan, true)
+			battles.UpdateTrainerPokemon(*otherPlayer.SelectedPokemon, issuerChan, false)
 		}
 		break
 	case battles.Defend:
-		if err := battles.HandleDefendMove(issuer, issuerChan); err == nil {
-			updateAdversaryOfDefendingMove(otherPlayerChan)
-		}
-		break
-
+		battles.HandleDefendMove(issuer, issuerChan)
+		ws.SendMessage(
+			*battles.StatusMessage{
+				Message: "Enemy is defending",
+			}.SerializeToWSMessage(), issuerChan)
 	case battles.UseItem:
-		if err := battles.HandleUseItem(message, issuer, issuerChan); err == nil {
-			battles.UpdateAdversaryOfPokemonChanges(*issuer.SelectedPokemon, otherPlayerChan)
+		if changed := battles.HandleUseItem(message, issuer, issuerChan); changed {
+			battles.UpdateTrainerPokemon(*issuer.SelectedPokemon, otherPlayerChan, false)
 		}
-		break
-
 	case battles.SelectPokemon:
-		if err := battles.HandleSelectPokemon(msgStr, issuer, issuerChan); err == nil {
-			battles.UpdateAdversaryOfPokemonChanges(*issuer.SelectedPokemon, otherPlayerChan)
+		if changed := battles.HandleSelectPokemon(message, issuer, issuerChan); changed {
+			battles.UpdateTrainerPokemon(*issuer.SelectedPokemon, otherPlayerChan, false)
 		}
-		break
-
 	default:
 		log.Errorf("cannot handle message type: %s ", message.MsgType)
-		msg := ws.Message{MsgType: battles.Error, MsgArgs: []string{fmt.Sprintf(battles.ErrInvalidMessageType.Error())}}
-		ws.SendMessage(msg, issuerChan)
-		return
+		ws.SendMessage(
+			*battles.ErrorMessage{
+				Info:  fmt.Sprintf(battles.ErrInvalidMessageType.Error()),
+				Fatal: false,
+			}.SerializeToWSMessage(), issuerChan)
 	}
-}
-
-func updateAdversaryOfDefendingMove(adversaryChan chan *string) {
-	msg := ws.Message{MsgType: battles.AdversaryDefending, MsgArgs: []string{battles.DefaultCooldown.String()}}
-	ws.SendMessage(msg, adversaryChan)
 }
 
 func (b *Battle) FinishBattle(winner string) {
 	b.Lobby.Finished = true
-	finishMsg := ws.Message{MsgType: battles.Finish, MsgArgs: []string{winner}}
-	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[0])
-	ws.SendMessage(finishMsg, *b.Lobby.TrainerOutChannels[1])
+	toSend := *battles.FinishMessage{}.SerializeToWSMessage()
+	ws.SendMessage(toSend, *b.Lobby.TrainerOutChannels[0])
+	ws.SendMessage(toSend, *b.Lobby.TrainerOutChannels[1])
 
 	<-b.Lobby.EndConnectionChannels[0]
 	<-b.Lobby.EndConnectionChannels[1]
@@ -231,12 +260,12 @@ func (b *Battle) logBattleStatus() {
 	log.Infof("Battle %s Info: selecting:%t", b.Lobby.Id.Hex(), b.Selecting)
 	log.Infof("Player 0 status: Defending:%t ; Cooldown:%t ", b.PlayersBattleStatus[0].Defending, b.PlayersBattleStatus[0].Cooldown)
 	if pokemon != nil {
-		log.Infof("Player 0 pokemon: id: %s; Species : %s ; Damage: %d; HP: %d/%d;", pokemon.Id.Hex(), pokemon.Species, pokemon.Damage, pokemon.HP, pokemon.MaxHP)
+		log.Infof("Player 0 pokemon:ID:%s, Damage:%d, HP:%d, maxHP:%d, Species:%s", pokemon.Id.Hex(), pokemon.Damage, pokemon.Damage, pokemon.HP, pokemon.MaxHP, pokemon.Species)
 	}
 
 	pokemon = b.PlayersBattleStatus[1].SelectedPokemon
 	log.Infof("Player 1 status: Defending:%t ; Cooldown:%t ", b.PlayersBattleStatus[1].Defending, b.PlayersBattleStatus[1].Cooldown)
 	if pokemon != nil {
-		log.Infof("Player 1 pokemon: id: %s; Species : %s ; Damage: %d; HP: %d/%d;", pokemon.Id.Hex(), pokemon.Species, pokemon.Damage, pokemon.HP, pokemon.MaxHP)
+		log.Infof("Player 1 pokemon:ID:%s, Damage:%d, HP:%d, maxHP:%d, Species:%s", pokemon.Id.Hex(), pokemon.Damage, pokemon.Damage, pokemon.HP, pokemon.MaxHP, pokemon.Species)
 	}
 }
