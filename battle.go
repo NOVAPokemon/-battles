@@ -115,11 +115,11 @@ func (b *Battle) mainLoop() (string, error) {
 		select {
 		case msgStr, ok := <-*b.Lobby.TrainerInChannels[0]:
 			if ok {
-				b.handlePlayerMessage(msgStr, b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0], b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1])
+				b.handlePlayerMessage(msgStr, b.PlayersBattleStatus[0], b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[0], *b.Lobby.TrainerOutChannels[1])
 			}
 		case msgStr, ok := <-*b.Lobby.TrainerInChannels[1]:
 			if ok {
-				b.handlePlayerMessage(msgStr, b.PlayersBattleStatus[1], *b.Lobby.TrainerOutChannels[1], b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0])
+				b.handlePlayerMessage(msgStr, b.PlayersBattleStatus[1], b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[1], *b.Lobby.TrainerOutChannels[0])
 			}
 		case <-b.PlayersBattleStatus[0].CdTimer.C:
 			b.PlayersBattleStatus[0].Cooldown = false
@@ -142,7 +142,7 @@ func (b *Battle) mainLoop() (string, error) {
 	return b.Winner, nil
 }
 
-func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.TrainerBattleStatus, issuerChan chan *string, otherPlayerChan chan *string) {
+func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.TrainerBattleStatus, issuerChan, otherPlayerChan chan *string) {
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
 		ws.SendMessage(
@@ -162,11 +162,12 @@ func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.Trai
 		return
 	}
 
-	battles.HandleSelectPokemon(message, issuer, issuerChan)
+	selectPokemonMsg := battles.DeserializeBattleMsg(message).(*battles.SelectPokemonMessage)
+	battles.HandleSelectPokemon(selectPokemonMsg, issuer, issuerChan)
 }
 
 // handles the reception of a move from a player.
-func (b *Battle) handlePlayerMessage(msgStr *string, issuer *battles.TrainerBattleStatus, issuerChan chan *string, otherPlayer *battles.TrainerBattleStatus, otherPlayerChan chan *string) {
+func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battles.TrainerBattleStatus, issuerChan, otherPlayerChan chan *string) {
 
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
@@ -182,6 +183,8 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer *battles.TrainerBatt
 
 	case battles.Attack:
 		if changed := battles.HandleAttackMove(issuer, issuerChan, otherPlayer.Defending, otherPlayer.SelectedPokemon); changed {
+
+			attackMsg := battles.DeserializeBattleMsg(message).(*battles.AttackMessage)
 
 			if otherPlayer.SelectedPokemon.HP == 0 {
 				allDead := true
@@ -214,8 +217,9 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer *battles.TrainerBatt
 				b.Finished = true
 				b.Winner = issuer.Username
 			}
-			battles.UpdateTrainerPokemon(*otherPlayer.SelectedPokemon, otherPlayerChan, true)
-			battles.UpdateTrainerPokemon(*otherPlayer.SelectedPokemon, issuerChan, false)
+
+			battles.UpdateTrainerPokemon(attackMsg.TrackedMessage, *otherPlayer.SelectedPokemon, otherPlayerChan, true)
+			battles.UpdateTrainerPokemon(attackMsg.TrackedMessage, *otherPlayer.SelectedPokemon, issuerChan, false)
 		}
 		break
 	case battles.Defend:
@@ -225,12 +229,14 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer *battles.TrainerBatt
 				Message: "Enemy is defending",
 			}.SerializeToWSMessage(), issuerChan)
 	case battles.UseItem:
-		if changed := battles.HandleUseItem(message, issuer, issuerChan); changed {
-			battles.UpdateTrainerPokemon(*issuer.SelectedPokemon, otherPlayerChan, false)
+		useItemMsg := battles.DeserializeBattleMsg(message).(*battles.UseItemMessage)
+		if changed := battles.HandleUseItem(useItemMsg, issuer, issuerChan); changed {
+			battles.UpdateTrainerPokemon(useItemMsg.TrackedMessage, *issuer.SelectedPokemon, otherPlayerChan, false)
 		}
 	case battles.SelectPokemon:
-		if changed := battles.HandleSelectPokemon(message, issuer, issuerChan); changed {
-			battles.UpdateTrainerPokemon(*issuer.SelectedPokemon, otherPlayerChan, false)
+		selectPokemonMsg := battles.DeserializeBattleMsg(message).(*battles.SelectPokemonMessage)
+		if changed := battles.HandleSelectPokemon(selectPokemonMsg, issuer, issuerChan); changed {
+			battles.UpdateTrainerPokemon(selectPokemonMsg.TrackedMessage, *issuer.SelectedPokemon, otherPlayerChan, false)
 		}
 	default:
 		log.Errorf("cannot handle message type: %s ", message.MsgType)
