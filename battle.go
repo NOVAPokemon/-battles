@@ -22,10 +22,13 @@ type (
 		StartChannel        chan struct{}
 		Selecting           bool
 		Finished            bool
+		cooldown            time.Duration
 	}
 )
 
-func NewBattle(lobby *ws.Lobby) *Battle {
+var cooldown int
+
+func NewBattle(lobby *ws.Lobby, cooldown int) *Battle {
 	return &Battle{
 		AuthTokens:          [2]string{},
 		PlayersBattleStatus: [2]*battles.TrainerBattleStatus{},
@@ -33,16 +36,19 @@ func NewBattle(lobby *ws.Lobby) *Battle {
 		StartChannel:        make(chan struct{}),
 		Winner:              "",
 		Lobby:               lobby,
+		cooldown:            time.Duration(cooldown) + time.Millisecond,
 	}
 }
 
-func (b *Battle) addPlayer(username string, pokemons map[string]*pokemons.Pokemon, stats *utils.TrainerStats, trainerItems map[string]items.Item, trainerConn *websocket.Conn, playerNr int, authToken string) {
+func (b *Battle) addPlayer(username string, pokemons map[string]*pokemons.Pokemon, stats *utils.TrainerStats,
+	trainerItems map[string]items.Item, trainerConn *websocket.Conn, playerNr int, authToken string) {
 
 	player := &battles.TrainerBattleStatus{
 		Username:        username,
 		TrainerStats:    stats,
 		TrainerPokemons: pokemons,
-		TrainerItems:    trainerItems, CdTimer: time.NewTimer(battles.DefaultCooldown),
+		TrainerItems:    trainerItems,
+		CdTimer:         time.NewTimer(time.Duration(cooldown) * time.Millisecond),
 		AllPokemonsDead: false,
 		UsedItems:       make(map[string]items.Item),
 	}
@@ -182,7 +188,7 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 	switch message.MsgType {
 
 	case battles.Attack:
-		if changed := battles.HandleAttackMove(issuer, issuerChan, otherPlayer.Defending, otherPlayer.SelectedPokemon); changed {
+		if changed := battles.HandleAttackMove(issuer, issuerChan, otherPlayer.Defending, otherPlayer.SelectedPokemon, b.cooldown); changed {
 
 			attackMsg := battles.DeserializeBattleMsg(message).(*battles.AttackMessage)
 
@@ -223,14 +229,14 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 		}
 		break
 	case battles.Defend:
-		battles.HandleDefendMove(issuer, issuerChan)
+		battles.HandleDefendMove(issuer, issuerChan, b.cooldown)
 		ws.SendMessage(
 			*battles.StatusMessage{
 				Message: "Enemy is defending",
 			}.SerializeToWSMessage(), issuerChan)
 	case battles.UseItem:
 		useItemMsg := battles.DeserializeBattleMsg(message).(*battles.UseItemMessage)
-		if changed := battles.HandleUseItem(useItemMsg, issuer, issuerChan); changed {
+		if changed := battles.HandleUseItem(useItemMsg, issuer, issuerChan, b.cooldown); changed {
 			battles.UpdateTrainerPokemon(useItemMsg.TrackedMessage, *issuer.SelectedPokemon, otherPlayerChan, false)
 		}
 	case battles.SelectPokemon:

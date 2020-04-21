@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"io/ioutil"
 	"net/http"
 	"runtime"
 	"sync"
@@ -29,14 +30,16 @@ type valueType = *Battle
 
 type BattleHub struct {
 	notificationClient *clients.NotificationClient
-
-	AwaitingLobbies sync.Map
-	QueuedBattles   sync.Map
-	ongoingBattles  sync.Map
+	AwaitingLobbies    sync.Map
+	QueuedBattles      sync.Map
+	ongoingBattles     sync.Map
 }
+
+const configFilename = "configs.json"
 
 var hub *BattleHub
 var httpClient = &http.Client{}
+var config *BattleServerConfig
 
 var (
 	ErrBattleNotExists      = errors.New("Battle does not exist")
@@ -48,6 +51,7 @@ var (
 )
 
 func init() {
+	config = loadConfig()
 	hub = &BattleHub{
 		notificationClient: clients.NewNotificationClient(fmt.Sprintf("%s:%d", utils.Host, utils.NotificationsPort), nil),
 		AwaitingLobbies:    sync.Map{},
@@ -136,7 +140,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 
 	lobbyId := primitive.NewObjectID()
 	battleLobby := ws.NewLobby(lobbyId)
-	battle := NewBattle(battleLobby)
+	battle := NewBattle(battleLobby, config.DefaultCooldown)
 	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.QueuedBattles.Store(lobbyId, battle)
 
@@ -198,10 +202,10 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	lobbyId := primitive.NewObjectID()
 	toSend := utils.Notification{
-		Id:       primitive.NewObjectID(),
-		Username: challengedPlayer,
-		Type:     notifications.ChallengeToBattle,
-		Content:  []byte(lobbyId.Hex()),
+		Id:               primitive.NewObjectID(),
+		Username:         challengedPlayer,
+		Type:             notifications.ChallengeToBattle,
+		Content:          []byte(lobbyId.Hex()),
 		TimestampEmitted: ws.MakeTimestamp(),
 	}
 
@@ -214,7 +218,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	battleLobby := ws.NewLobby(lobbyId)
-	battle := NewBattle(battleLobby)
+	battle := NewBattle(battleLobby, config.DefaultCooldown)
 	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.AwaitingLobbies.Store(lobbyId, battle)
 	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
@@ -332,12 +336,12 @@ func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, use
 		return nil, nil, nil, err
 	}
 
-	if len(pokemonTkns) > battles.PokemonsPerBattle {
+	if len(pokemonTkns) > config.PokemonsPerBattle {
 		log.Error(ErrTooManyPokemons)
 		return nil, nil, nil, ErrTooManyPokemons
 	}
 
-	if len(pokemonTkns) < battles.PokemonsPerBattle {
+	if len(pokemonTkns) < config.PokemonsPerBattle {
 		log.Error(ErrNotEnoughPokemons)
 		return nil, nil, nil, ErrNotEnoughPokemons
 	}
@@ -517,4 +521,22 @@ func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battle
 	}.SerializeToWSMessage()
 	ws.SendMessage(*setTokensMessage, outChan)
 	return nil
+}
+
+func loadConfig() *BattleServerConfig {
+	fileData, err := ioutil.ReadFile(configFilename)
+	if err != nil {
+		log.Panic(err)
+		return nil
+	}
+
+	var config BattleServerConfig
+	err = json.Unmarshal(fileData, &config)
+	if err != nil {
+		log.Panic(err)
+		return nil
+	}
+
+	log.Infof("Loaded config: %+v", config)
+	return &config
 }
