@@ -13,6 +13,7 @@ import (
 	"github.com/NOVAPokemon/utils/tokens"
 	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
+	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
@@ -201,16 +202,20 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Player %s challenged %s for a battle", authToken.Username, challengedPlayer)
 
 	lobbyId := primitive.NewObjectID()
-	toSend := utils.Notification{
-		Id:               primitive.NewObjectID(),
-		Username:         challengedPlayer,
-		Type:             notifications.ChallengeToBattle,
-		Content:          []byte(lobbyId.Hex()),
-		TimestampEmitted: ws.MakeTimestamp(),
+	notification := utils.Notification{
+		Id:       primitive.NewObjectID(),
+		Username: challengedPlayer,
+		Type:     notifications.ChallengeToBattle,
+		Content:  []byte(lobbyId.Hex()),
 	}
 
-	log.Infof("Sending notification: Id:%s Content:%s to %s", toSend.Id.Hex(), string(toSend.Content), toSend.Username)
-	err = hub.notificationClient.AddNotification(toSend, r.Header.Get(tokens.AuthTokenHeaderName))
+	notificationMsg := notificationsMessages.NewNotificationMessage(notification)
+	notificationMsg.Emit(ws.MakeTimestamp())
+	notificationMsg.LogEmit(notificationsMessages.Notification)
+
+	log.Infof("Sending notification: Id:%s Content:%s to %s", notification.Id.Hex(),
+		string(notification.Content), notification.Username)
+	err = hub.notificationClient.AddNotification(&notificationMsg, r.Header.Get(tokens.AuthTokenHeaderName))
 
 	if err != nil {
 		http.Error(w, ErrPlayerNotOnline.Error(), http.StatusInternalServerError)
