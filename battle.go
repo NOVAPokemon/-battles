@@ -65,14 +65,14 @@ func (b *Battle) StartBattle() (string, error) {
 
 	if err != nil {
 		log.Error(err)
-		return "", nil
+		return "", err
 	}
 
 	winner, err := b.mainLoop()
 
 	if err != nil {
 		log.Error(err)
-		return "", nil
+		return "", err
 	}
 
 	return winner, err

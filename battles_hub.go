@@ -312,16 +312,17 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 	if err != nil {
 		log.Errorf("Battle %s finished with error: ", err)
 		log.Error(err)
+		ws.CloseLobby(battle.Lobby)
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
 		err := commitBattleResults(trainersClient, battleId.Hex(), battle)
 		if err != nil {
 			log.Error(err)
 		}
+		battle.FinishBattle(battle.Winner)
 	}
 
 	// finish battle
-	battle.FinishBattle(battle.Winner)
 	log.Warnf("Active goroutines: %d", runtime.NumGoroutine())
 }
 
