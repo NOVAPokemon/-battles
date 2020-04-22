@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/api"
 	"github.com/NOVAPokemon/utils/clients"
@@ -54,7 +53,7 @@ var (
 func init() {
 	config = loadConfig()
 	hub = &BattleHub{
-		notificationClient: clients.NewNotificationClient(fmt.Sprintf("%s:%d", utils.Host, utils.NotificationsPort), nil),
+		notificationClient: clients.NewNotificationClient(nil),
 		AwaitingLobbies:    sync.Map{},
 		QueuedBattles:      sync.Map{},
 		ongoingBattles:     sync.Map{},
@@ -110,7 +109,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trainersClient := clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort), httpClient)
+	trainersClient := clients.NewTrainersClient(httpClient)
 
 	log.Infof("New player queued for battle: %s", authToken.Username)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient, authToken.Username, r)
@@ -184,7 +183,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trainersClient := clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort), httpClient)
+	trainersClient := clients.NewTrainersClient(httpClient)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient, authToken.Username, r)
 
 	if err != nil {
@@ -276,7 +275,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trainersClient := clients.NewTrainersClient(fmt.Sprintf("%s:%d", utils.Host, utils.TrainersPort), httpClient)
+	trainersClient := clients.NewTrainersClient(httpClient)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient, authToken.Username, r)
 
 	if err != nil {
