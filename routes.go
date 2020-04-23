@@ -13,6 +13,7 @@ const QueueForBattleName = "QUEUE_FOR_BATTLE"
 const GET = "GET"
 
 var routes = utils.Routes{
+	api.DefaultRoute,
 	utils.Route{
 		Name:        GetBattlesName,
 		Method:      GET,
