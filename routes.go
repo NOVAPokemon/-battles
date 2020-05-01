@@ -5,17 +5,19 @@ import (
 	"github.com/NOVAPokemon/utils/api"
 )
 
-const GetBattlesName = "GET_BATTLES"
-const ChallengeToBattleName = "START_BATTLE"
-const AcceptChallengeName = "JOIN_BATTLE"
-const QueueForBattleName = "QUEUE_FOR_BATTLE"
+const (
+	GetLobbiesName        = "GET_LOBBIES"
+	QueueForBattleName    = "QUEUE_FOR_BATTLE"
+	ChallengeToBattleName = "CHALLENGE_FOR_BATTLE"
+	AcceptChallengeName   = "ACCEPT_BATTLE"
+)
 
 const GET = "GET"
 
 var routes = utils.Routes{
 	api.DefaultRoute,
 	utils.Route{
-		Name:        GetBattlesName,
+		Name:        GetLobbiesName,
 		Method:      GET,
 		Pattern:     api.GetBattlesPath,
 		HandlerFunc: GetCurrentLobbies,
