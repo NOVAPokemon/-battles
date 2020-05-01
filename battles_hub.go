@@ -322,7 +322,6 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 
 	winner, err := battle.StartBattle()
 	if err != nil {
-		err = wrapFinishBattleError(err, battleId.Hex())
 		log.Error(err)
 		ws.CloseLobby(battle.Lobby)
 	} else {
