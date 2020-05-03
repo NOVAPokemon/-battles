@@ -83,8 +83,8 @@ func (b *Battle) setupLoop() error {
 	// loops until both players have selected a pokemon
 	for ; players[0].SelectedPokemon == nil || players[1].SelectedPokemon == nil; {
 		b.logBattleStatus()
-		select {
 
+		select {
 		case msgStr := <-*b.Lobby.TrainerInChannels[0]:
 			b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[0], *b.Lobby.TrainerOutChannels[0],
 				*b.Lobby.TrainerOutChannels[1])
@@ -100,7 +100,6 @@ func (b *Battle) setupLoop() error {
 			ws.CloseLobby(b.Lobby)
 			return wrapSetupLoopError(err)
 		}
-
 	}
 
 	log.Info("Battle setup finished")
@@ -146,9 +145,10 @@ func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.Trai
 	issuerChan, otherPlayerChan chan *string) {
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
+		log.Error(ws.WrapMsgParsingError(err, *msgStr))
 		ws.SendMessage(
 			*battles.ErrorMessage{
-				Info:  battles.ErrorInvalidMessageFormat.Error(),
+				Info:  ws.ErrorInvalidMessageFormat.Error(),
 				Fatal: false,
 			}.SerializeToWSMessage(), issuerChan)
 		return
@@ -173,11 +173,13 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
+		log.Error(ws.WrapMsgParsingError(err, *msgStr))
 		ws.SendMessage(
 			*battles.ErrorMessage{
-				Info:  battles.ErrorInvalidMessageType.Error(),
+				Info:  ws.ErrorInvalidMessageType.Error(),
 				Fatal: false,
-			}.SerializeToWSMessage(), issuerChan)
+			}.SerializeToWSMessage(),
+			issuerChan)
 		return
 	}
 
@@ -241,10 +243,10 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 			battles.UpdateTrainerPokemon(selectPokemonMsg.TrackedMessage, *issuer.SelectedPokemon, otherPlayerChan, false)
 		}
 	default:
-		log.Errorf("cannot handle message type: %s ", message.MsgType)
+		log.Error(ws.NewInvalidMsgTypeError(message.MsgType))
 		ws.SendMessage(
 			*battles.ErrorMessage{
-				Info:  battles.ErrorInvalidMessageType.Error(),
+				Info:  ws.ErrorInvalidMessageType.Error(),
 				Fatal: false,
 			}.SerializeToWSMessage(), issuerChan)
 	}
@@ -262,7 +264,6 @@ func (b *Battle) FinishBattle(winner string) {
 }
 
 func (b *Battle) logBattleStatus() {
-
 	log.Info("----------------------------------------")
 	pokemon := b.PlayersBattleStatus[0].SelectedPokemon
 	log.Infof("Battle %s Info: selecting:%t", b.Lobby.Id.Hex(), b.Selecting)
