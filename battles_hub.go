@@ -15,7 +15,6 @@ import (
 	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io/ioutil"
@@ -40,12 +39,6 @@ const configFilename = "configs.json"
 var hub *BattleHub
 var httpClient = &http.Client{}
 var config *BattleServerConfig
-
-var (
-	ErrBattleNotExists      = errors.New("Battle does not exist")
-	ErrPlayerNotOnline      = errors.New("Challenged player not online")
-	ErrInvalidPokemonHashes = errors.New("Invalid pokemon hashes")
-)
 
 func init() {
 	config = loadConfig()
@@ -218,7 +211,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		// TODO does this work? wasnt `w` upgraded to websocket?
-		err = wrapChallengeToBattleError(ErrPlayerNotOnline)
+		err = wrapChallengeToBattleError(errorPlayerNotOnline)
 		utils.LogAndSendHTTPError(&w, err, http.StatusInternalServerError)
 		return
 	}
@@ -296,13 +289,15 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
 
+	// TODO error not verified?
 	lobbyId, err := primitive.ObjectIDFromHex(mux.Vars(r)[api.BattleIdPathVar])
 	value, ok := hub.AwaitingLobbies.Load(lobbyId)
 	battle := value.(valueType)
 
 	if !ok {
 		// TODO does this work? wasnt `w` upgraded to websocket?
-		http.Error(w, ErrBattleNotExists.Error(), http.StatusNotFound)
+		err = wrapAcceptChallengeError(errorBattleDoesNotExist)
+		utils.LogAndSendHTTPError(&w, err, http.StatusNotFound)
 		_ = conn.Close()
 		return
 	}
