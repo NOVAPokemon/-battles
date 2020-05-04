@@ -17,11 +17,13 @@ const (
 )
 
 var (
-	errorTooManyPokemons   = errors.New("too many pokemons")
-	errorNotEnoughPokemons = errors.New("not enough pokemons")
-	errorPokemonTokens     = errors.New("invalid pokemon hashes")
-	errorStatsToken        = errors.New("invalid stats token")
-	errorItemsToken        = errors.New("invalid items token")
+	errorTooManyPokemons    = errors.New("too many pokemons")
+	errorNotEnoughPokemons  = errors.New("not enough pokemons")
+	errorPokemonTokens      = errors.New("invalid pokemon hashes")
+	errorStatsToken         = errors.New("invalid stats token")
+	errorItemsToken         = errors.New("invalid items token")
+	errorBattleDoesNotExist = errors.New("battle does not exist")
+	errorPlayerNotOnline    = errors.New("challenged player not online")
 )
 
 // Handlers
