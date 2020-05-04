@@ -145,7 +145,7 @@ func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.Trai
 	issuerChan, otherPlayerChan chan *string) {
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
-		log.Error(ws.WrapMsgParsingError(err, *msgStr))
+		log.Error(err)
 		ws.SendMessage(
 			*battles.ErrorMessage{
 				Info:  ws.ErrorInvalidMessageFormat.Error(),
@@ -173,7 +173,7 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
-		log.Error(ws.WrapMsgParsingError(err, *msgStr))
+		log.Error(err)
 		ws.SendMessage(
 			*battles.ErrorMessage{
 				Info:  ws.ErrorInvalidMessageType.Error(),
