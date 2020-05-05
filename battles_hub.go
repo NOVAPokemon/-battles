@@ -366,7 +366,7 @@ func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, use
 	}
 
 	if !*valid {
-		return nil, nil, nil, errorPokemonTokens
+		return nil, nil, nil, tokens.ErrorInvalidPokemonTokens
 	}
 
 
@@ -383,7 +383,7 @@ func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, use
 	}
 
 	if !*valid {
-		return nil, nil, nil, errorStatsToken
+		return nil, nil, nil, tokens.ErrorInvalidStatsToken
 	}
 
 
@@ -400,7 +400,7 @@ func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, use
 	}
 
 	if !*valid {
-		return nil, nil, nil, errorItemsToken
+		return nil, nil, nil, tokens.ErrorInvalidItemsToken
 	}
 
 	return itemsToken.Items, &trainerStatsToken.TrainerStats, pokemonsInToken, nil
