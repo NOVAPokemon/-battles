@@ -81,7 +81,7 @@ func HandleGetCurrentLobbies(w http.ResponseWriter, _ *http.Request) {
 func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		err := wrapQueueBattleError(utils.ErrorConnectionUpgrade)
+		err := wrapQueueBattleError(ws.WrapUpgradeConnectionError(err))
 		utils.LogAndSendHTTPError(&w, err, http.StatusInternalServerError)
 		// TODO Is this truely needed?
 		//_ = conn.Close()
@@ -158,7 +158,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		err := wrapChallengeToBattleError(utils.ErrorConnectionUpgrade)
+		err := wrapChallengeToBattleError(ws.WrapUpgradeConnectionError(err))
 		utils.LogAndSendHTTPError(&w, err, http.StatusInternalServerError)
 		// TODO Is this needed?
 		//_ = conn.Close()
@@ -255,7 +255,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		err := wrapAcceptChallengeError(utils.ErrorConnectionUpgrade)
+		err := wrapAcceptChallengeError(ws.WrapUpgradeConnectionError(err))
 		utils.LogAndSendHTTPError(&w, err, http.StatusInternalServerError)
 		// TODO Is this needed?
 		//_ = conn.Close()
@@ -468,7 +468,7 @@ func RemoveUsedItems(trainersClient *clients.TrainersClient, player battles.Trai
 		return err
 	}
 
-	setTokensMessage := battles.SetTokenMessage{
+	setTokensMessage := ws.SetTokenMessage{
 		TokenField:   tokens.ItemsTokenHeaderName,
 		TokensString: []string{trainersClient.ItemsToken},
 	}.SerializeToWSMessage()
@@ -499,7 +499,7 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 		i++
 	}
 
-	setTokensMessage := battles.SetTokenMessage{
+	setTokensMessage := ws.SetTokenMessage{
 		TokenField:   tokens.PokemonsTokenHeaderName,
 		TokensString: toSend,
 	}.SerializeToWSMessage()
@@ -518,7 +518,7 @@ func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battle
 		return err
 	}
 
-	setTokensMessage := battles.SetTokenMessage{
+	setTokensMessage := ws.SetTokenMessage{
 		TokenField:   tokens.StatsTokenHeaderName,
 		TokensString: []string{trainersClient.TrainerStatsToken},
 	}.SerializeToWSMessage()
