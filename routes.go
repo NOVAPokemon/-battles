@@ -21,25 +21,25 @@ var routes = utils.Routes{
 		Name:        GetLobbiesName,
 		Method:      GET,
 		Pattern:     api.GetBattlesPath,
-		HandlerFunc: GetCurrentLobbies,
+		HandlerFunc: HandleGetCurrentLobbies,
 	},
 	utils.Route{
 		Name:        ChallengeToBattleName,
 		Method:      GET,
 		Pattern:     api.ChallengeToBattleRoute,
-		HandlerFunc: CreateBattleLobby,
+		HandlerFunc: HandleChallengeToBattle,
 	},
 	utils.Route{
 		Name:        AcceptChallengeName,
 		Method:      GET,
 		Pattern:     api.AcceptChallengeRoute,
-		HandlerFunc: JoinBattleLobby,
+		HandlerFunc: HandleAcceptChallenge,
 	},
 
 	utils.Route{
 		Name:        QueueForBattleName,
 		Method:      GET,
 		Pattern:     api.QueueForBattlePath,
-		HandlerFunc: QueueForBattle,
+		HandlerFunc: HandleQueueForBattle,
 	},
 }
