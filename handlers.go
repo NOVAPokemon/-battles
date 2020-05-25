@@ -151,7 +151,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer func() {
 			if !battleLobby.Started {
-				log.Error("Player left queue")
+				log.Warn("Player left queue")
 				defer hub.QueuedBattles.Delete(lobbyId)
 			}
 		}()
