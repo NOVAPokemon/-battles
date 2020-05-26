@@ -354,8 +354,14 @@ func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lobbyId, err := primitive.ObjectIDFromHex(lobbyIdHex)
+	if err != nil {
+		utils.LogAndSendHTTPError(&w, errorBattleDoesNotExist, http.StatusInternalServerError)
+		return
+	}
+
 	var battleInterface interface{}
-	battleInterface, ok = hub.AwaitingLobbies.Load(lobbyIdHex)
+	battleInterface, ok = hub.AwaitingLobbies.Load(lobbyId)
 	if !ok {
 		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusBadRequest)
 		return
