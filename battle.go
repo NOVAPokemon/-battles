@@ -21,12 +21,13 @@ type (
 		Selecting           bool
 		Finished            bool
 		cooldown            time.Duration
+		Expected            [2]string
 	}
 )
 
 var cooldown int
 
-func NewBattle(lobby *ws.Lobby, cooldown int) *Battle {
+func NewBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *Battle {
 	return &Battle{
 		AuthTokens:          [2]string{},
 		PlayersBattleStatus: [2]*battles.TrainerBattleStatus{},
@@ -35,6 +36,7 @@ func NewBattle(lobby *ws.Lobby, cooldown int) *Battle {
 		Winner:              "",
 		Lobby:               lobby,
 		cooldown:            time.Duration(cooldown) + time.Millisecond,
+		Expected:            expected,
 	}
 }
 

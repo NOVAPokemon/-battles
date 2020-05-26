@@ -11,9 +11,11 @@ const (
 	QueueForBattleName    = "QUEUE_FOR_BATTLE"
 	ChallengeToBattleName = "CHALLENGE_FOR_BATTLE"
 	AcceptChallengeName   = "ACCEPT_BATTLE"
+	RejectChallengeName   = "REJECT_BATTLE"
 )
 
 const GET = "GET"
+const POST = "POST"
 
 var routes = utils.Routes{
 	api.GenStatusRoute(strings.ToLower(serviceName)),
@@ -35,11 +37,16 @@ var routes = utils.Routes{
 		Pattern:     api.AcceptChallengeRoute,
 		HandlerFunc: HandleAcceptChallenge,
 	},
-
 	utils.Route{
 		Name:        QueueForBattleName,
 		Method:      GET,
 		Pattern:     api.QueueForBattlePath,
 		HandlerFunc: HandleQueueForBattle,
+	},
+	utils.Route{
+		Name:        RejectChallengeName,
+		Method:      POST,
+		Pattern:     api.RejectChallengeRoute,
+		HandlerFunc: HandleRejectChallenge,
 	},
 }

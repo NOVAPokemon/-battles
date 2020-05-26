@@ -38,11 +38,13 @@ type BattleHub struct {
 
 const configFilename = "configs.json"
 
-var hub *BattleHub
-var httpClient = &http.Client{}
-var config *BattleServerConfig
-var serverName string
-var serviceNameHeadless string
+var (
+	hub                 *BattleHub
+	httpClient          = &http.Client{}
+	config              *BattleServerConfig
+	serverName          string
+	serviceNameHeadless string
+)
 
 func init() {
 	if aux, exists := os.LookupEnv(utils.HostnameEnvVar); exists {
@@ -144,7 +146,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 
 	lobbyId := primitive.NewObjectID()
 	battleLobby := ws.NewLobby(lobbyId)
-	battle := NewBattle(battleLobby, config.DefaultCooldown)
+	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, ""})
 	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.QueuedBattles.Store(lobbyId, battle)
 
@@ -209,8 +211,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		ServerHostname: fmt.Sprintf("%s.%s", serverName, serviceNameHeadless),
 	}
 
-	contentBytes,
-	err := json.Marshal(toMarshal)
+	contentBytes, err := json.Marshal(toMarshal)
 	if err != nil {
 		log.Fatal(wrapChallengeToBattleError(err))
 	}
@@ -230,14 +231,13 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	err = hub.notificationClient.AddNotification(&notificationMsg, r.Header.Get(tokens.AuthTokenHeaderName))
 
 	if err != nil {
-		// TODO does this work? wasnt `w` upgraded to websocket?
 		err = wrapChallengeToBattleError(errorPlayerNotOnline)
 		utils.LogAndSendHTTPError(&w, err, http.StatusInternalServerError)
 		return
 	}
 
 	battleLobby := ws.NewLobby(lobbyId)
-	battle := NewBattle(battleLobby, config.DefaultCooldown)
+	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
 	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 0, r.Header.Get(tokens.AuthTokenHeaderName))
 	hub.AwaitingLobbies.Store(lobbyId, battle)
 	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
@@ -326,10 +326,53 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if battle.Expected[1] != authToken.Username {
+		log.Error(wrapAcceptChallengeError(err))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(errorPlayerUnauthorized.Error()))
+		_ = conn.Close()
+		return
+	}
+
 	hub.AwaitingLobbies.Delete(lobbyId)
 	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
-	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
+	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1,
+		r.Header.Get(tokens.AuthTokenHeaderName))
 	startBattle(trainersClient, lobbyId, battle)
+}
+
+func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {
+	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
+	if err != nil {
+		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(err), http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	lobbyIdHex, ok := vars[api.BattleIdPathVar]
+	if !ok {
+		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusBadRequest)
+		return
+	}
+
+	var battleInterface interface{}
+	battleInterface, ok = hub.AwaitingLobbies.Load(lobbyIdHex)
+	if !ok {
+		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusBadRequest)
+		return
+
+	}
+
+	battle := battleInterface.(valueType)
+	for _, trainer := range battle.Expected {
+		if trainer == authToken.Username {
+			log.Infof("%s rejected invite for lobby %s", trainer, lobbyIdHex)
+			ws.CloseLobby(battle.Lobby)
+			hub.AwaitingLobbies.Delete(battle.Lobby.Id)
+			return
+		}
+	}
+
+	utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorPlayerUnauthorized), http.StatusUnauthorized)
 }
 
 func startBattle(trainersClient *clients.TrainersClient, battleId primitive.ObjectID, battle *Battle) {
@@ -443,7 +486,7 @@ func commitBattleResults(trainersClient *clients.TrainersClient, battleId string
 		return wrapCommitResultsError(err, battleId)
 	}
 
-	//Update trainer stats: add experience
+	// Update trainer stats: add experience
 	experienceGain = experience.GetTrainerExperienceGainFromBattle(battle.Winner == battle.PlayersBattleStatus[0].Username)
 	err = AddExperienceToPlayer(trainersClient, *battle.PlayersBattleStatus[0], battle.AuthTokens[0], *battle.Lobby.TrainerOutChannels[0], experienceGain)
 	if err != nil {
@@ -504,7 +547,7 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 	authToken string, outChan chan ws.GenericMsg, xpAmount float64) error {
 
 	// updates pokemon status after battle: adds XP and updates HP
-	//player 0
+	// player 0
 
 	for id, pokemon := range player.TrainerPokemons {
 		pokemon.XP += xpAmount

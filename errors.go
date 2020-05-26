@@ -21,6 +21,7 @@ var (
 	errorNotEnoughPokemons  = errors.New("not enough pokemons")
 	errorBattleDoesNotExist = errors.New("battle does not exist")
 	errorPlayerNotOnline    = errors.New("challenged player not online")
+	errorPlayerUnauthorized = errors.New("player is not authorized to join this battle")
 )
 
 // Handlers
@@ -38,6 +39,10 @@ func wrapChallengeToBattleError(err error) error {
 
 func wrapAcceptChallengeError(err error) error {
 	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, AcceptChallengeName))
+}
+
+func wrapRejectChallengeError(err error) error {
+	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, RejectChallengeName))
 }
 
 // Other Functions
