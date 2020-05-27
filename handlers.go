@@ -244,11 +244,18 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
-		<-timer.C
-		if !battleLobby.Started {
-			log.Error("Closing lobby because no player joined")
-			ws.CloseLobby(battleLobby)
+
+		select {
+		case <-timer.C:
+			if !battleLobby.Started {
+				log.Error("Closing lobby because no player joined")
+				ws.CloseLobby(battleLobby)
+				hub.AwaitingLobbies.Delete(lobbyId)
+			}
+		case <-battle.RejectChannel:
+			battle.SendRejectedBattle()
 			hub.AwaitingLobbies.Delete(lobbyId)
+			return
 		}
 	}()
 
@@ -372,8 +379,7 @@ func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 	for _, trainer := range battle.Expected {
 		if trainer == authToken.Username {
 			log.Infof("%s rejected invite for lobby %s", trainer, lobbyIdHex)
-			ws.CloseLobby(battle.Lobby)
-			hub.AwaitingLobbies.Delete(battle.Lobby.Id)
+			close(battle.RejectChannel)
 			return
 		}
 	}

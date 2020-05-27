@@ -18,6 +18,7 @@ type (
 		PlayersBattleStatus [2]*battles.TrainerBattleStatus
 		Winner              string
 		StartChannel        chan struct{}
+		RejectChannel        chan struct{}
 		Selecting           bool
 		Finished            bool
 		cooldown            time.Duration
@@ -33,6 +34,7 @@ func NewBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *Battle {
 		PlayersBattleStatus: [2]*battles.TrainerBattleStatus{},
 		Finished:            false,
 		StartChannel:        make(chan struct{}),
+		RejectChannel:       make(chan struct{}),
 		Winner:              "",
 		Lobby:               lobby,
 		cooldown:            time.Duration(cooldown) + time.Millisecond,
@@ -291,6 +293,19 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 		}
 	}
 }
+
+func (b *Battle) SendRejectedBattle() {
+	toSend := ws.GenericMsg{
+		MsgType: websocket.TextMessage,
+		Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
+	}
+	*b.Lobby.TrainerOutChannels[0] <- toSend
+
+	b.Lobby.Finished = true
+	<-b.Lobby.EndConnectionChannels[0]
+	ws.CloseLobby(b.Lobby)
+}
+
 
 func (b *Battle) FinishBattle() {
 	b.Lobby.Finished = true
