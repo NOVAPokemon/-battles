@@ -18,7 +18,7 @@ type (
 		PlayersBattleStatus [2]*battles.TrainerBattleStatus
 		Winner              string
 		StartChannel        chan struct{}
-		RejectChannel        chan struct{}
+		RejectChannel       chan struct{}
 		Selecting           bool
 		Finished            bool
 		cooldown            time.Duration
@@ -305,7 +305,6 @@ func (b *Battle) SendRejectedBattle() {
 	<-b.Lobby.EndConnectionChannels[0]
 	ws.CloseLobby(b.Lobby)
 }
-
 
 func (b *Battle) FinishBattle() {
 	b.Lobby.Finished = true
