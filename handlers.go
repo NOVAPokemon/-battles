@@ -138,6 +138,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		battle := value.(valueType)
 		battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
 		startBattle(trainersClient, key.(keyType), battle)
+		emitStartBattle()
 		return false
 	})
 
@@ -346,6 +347,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1,
 		r.Header.Get(tokens.AuthTokenHeaderName))
 	startBattle(trainersClient, lobbyId, battle)
+	emitStartBattle()
 }
 
 func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {
@@ -407,7 +409,7 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 		}
 		battle.FinishBattle()
 	}
-
+	emitEndBattle()
 	// finish battle
 	log.Warnf("Active goroutines: %d", runtime.NumGoroutine())
 }
