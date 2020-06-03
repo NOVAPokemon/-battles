@@ -1,5 +1,5 @@
 {
   "default_cooldown": 500,
   "pokemons_per_battle": 2,
-  "battle_start_timeout" : 30
+  "battle_start_timeout": 30
 }
