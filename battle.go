@@ -81,14 +81,26 @@ func (b *Battle) StartBattle() (string, error) {
 func (b *Battle) setupLoop() error {
 	players := b.PlayersBattleStatus
 	startMsg := ws.StartMessage{}.SerializeToWSMessage().Serialize()
-	b.Lobby.TrainerOutChannels[0].Write(ws.GenericMsg{
+
+	err := b.Lobby.TrainerOutChannels[0].Write(ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(startMsg),
 	})
-	b.Lobby.TrainerOutChannels[1].Write(ws.GenericMsg{
+
+	if err != nil {
+		ws.CloseLobby(b.Lobby)
+		return wrapSetupLoopError(err)
+	}
+
+	err = b.Lobby.TrainerOutChannels[1].Write(ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(startMsg),
 	})
+
+	if err != nil {
+		ws.CloseLobby(b.Lobby)
+		return wrapSetupLoopError(err)
+	}
 
 	log.Info("Sent START message")
 
@@ -162,7 +174,7 @@ func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.Trai
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
 		log.Error(err)
-		issuerChan.Write(ws.GenericMsg{
+		_ = issuerChan.Write(ws.GenericMsg{
 			MsgType: websocket.TextMessage,
 			Data: []byte(ws.ErrorMessage{
 				Info:  ws.ErrorInvalidMessageFormat.Error(),
@@ -172,7 +184,7 @@ func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.Trai
 	}
 
 	if message.MsgType != battles.SelectPokemon {
-		issuerChan.Write(ws.GenericMsg{
+		_ = issuerChan.Write(ws.GenericMsg{
 			MsgType: websocket.TextMessage,
 			Data: []byte(ws.ErrorMessage{
 				Info:  battles.ErrorPokemonSelectionPhase.Error(),
@@ -198,7 +210,7 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
 		log.Error(err)
-		issuerChan.Write(ws.GenericMsg{
+		_ = issuerChan.Write(ws.GenericMsg{
 			MsgType: websocket.TextMessage,
 			Data: []byte(ws.ErrorMessage{
 				Info:  ws.ErrorInvalidMessageType.Error(),
@@ -256,7 +268,7 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 		break
 	case battles.Defend:
 		battles.HandleDefendMove(issuer, issuerChan, b.cooldown)
-		issuerChan.Write(ws.GenericMsg{
+		_ = issuerChan.Write(ws.GenericMsg{
 			MsgType: websocket.TextMessage,
 			Data: []byte(battles.StatusMessage{
 				Message: "Enemy is defending",
@@ -286,7 +298,7 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 		}
 	default:
 		log.Error(ws.NewInvalidMsgTypeError(message.MsgType))
-		issuerChan.Write(ws.GenericMsg{
+		_ = issuerChan.Write(ws.GenericMsg{
 			MsgType: websocket.TextMessage,
 			Data: []byte(ws.ErrorMessage{
 				Info:  ws.ErrorInvalidMessageType.Error(),
@@ -301,7 +313,7 @@ func (b *Battle) SendRejectedBattle() {
 		MsgType: websocket.TextMessage,
 		Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
 	}
-	b.Lobby.TrainerOutChannels[0].Write(toSend)
+	_ = b.Lobby.TrainerOutChannels[0].Write(toSend)
 
 	b.Lobby.Finished = true
 	<-b.Lobby.EndConnectionChannels[0]
@@ -314,8 +326,8 @@ func (b *Battle) FinishBattle() {
 		MsgType: websocket.TextMessage,
 		Data:    []byte(ws.FinishMessage{}.SerializeToWSMessage().Serialize()),
 	}
-	b.Lobby.TrainerOutChannels[0].Write(toSend)
-	b.Lobby.TrainerOutChannels[1].Write(toSend)
+	_ = b.Lobby.TrainerOutChannels[0].Write(toSend)
+	_ = b.Lobby.TrainerOutChannels[1].Write(toSend)
 
 	<-b.Lobby.EndConnectionChannels[0]
 	<-b.Lobby.EndConnectionChannels[1]

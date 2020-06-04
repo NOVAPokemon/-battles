@@ -551,10 +551,14 @@ func RemoveUsedItems(trainersClient *clients.TrainersClient, player battles.Trai
 		TokenField:   tokens.ItemsTokenHeaderName,
 		TokensString: []string{trainersClient.ItemsToken},
 	}.SerializeToWSMessage()
-	outChan.Write(ws.GenericMsg{
+	err = outChan.Write(ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(setTokensMessage.Serialize()),
 	})
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -586,10 +590,15 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 		TokenField:   tokens.PokemonsTokenHeaderName,
 		TokensString: toSend,
 	}.SerializeToWSMessage()
-	outChan.Write(ws.GenericMsg{
+	err := outChan.Write(ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(setTokensMessage.Serialize()),
 	})
+
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -609,10 +618,14 @@ func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battle
 		TokensString: []string{trainersClient.TrainerStatsToken},
 	}.SerializeToWSMessage()
 
-	outChan.Write(ws.GenericMsg{
+	err = outChan.Write(ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(setTokensMessage.Serialize()),
 	})
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
