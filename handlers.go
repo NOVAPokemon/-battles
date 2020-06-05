@@ -136,7 +136,8 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		hasOne = true
 		hub.QueuedBattles.Delete(key)
 		battle := value.(valueType)
-		battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1, r.Header.Get(tokens.AuthTokenHeaderName))
+		battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1,
+			r.Header.Get(tokens.AuthTokenHeaderName))
 		startBattle(trainersClient, key.(keyType), battle)
 		emitStartBattle()
 		return false
