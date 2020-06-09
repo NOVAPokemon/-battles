@@ -315,13 +315,13 @@ func (b *Battle) SendRejectedBattle() {
 	}
 	_ = b.Lobby.TrainerOutChannels[0].Write(toSend)
 
-	b.Lobby.Finished = true
+	close(b.Lobby.Finished)
 	<-b.Lobby.EndConnectionChannels[0]
 	ws.CloseLobby(b.Lobby)
 }
 
 func (b *Battle) FinishBattle() {
-	b.Lobby.Finished = true
+	close(b.Lobby.Finished)
 	toSend := ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(ws.FinishMessage{}.SerializeToWSMessage().Serialize()),
