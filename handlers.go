@@ -132,45 +132,57 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
 
-	hasOne := false
+	found := false
 	hub.QueuedBattles.Range(func(key, value interface{}) bool {
-		hasOne = true
-		hub.QueuedBattles.Delete(key)
 		battle := value.(valueType)
-		battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1,
-			r.Header.Get(tokens.AuthTokenHeaderName))
-		startBattle(trainersClient, key.(keyType), battle)
-		emitStartBattle()
-		return false
+		playerNr, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
+		if err != nil {
+			log.Error(err)
+			return true
+		}
+		if playerNr == 2 {
+			found = true
+			startBattle(trainersClient, battle.Lobby.Id, battle)
+			emitStartBattle()
+			hub.QueuedBattles.Delete(key)
+			return false
+		}
+		return true
 	})
 
-	if hasOne {
+	if found {
 		return
 	}
 
 	lobbyId := primitive.NewObjectID()
-	battleLobby := ws.NewLobby(lobbyId)
+	battleLobby := ws.NewLobby(lobbyId, 2)
 	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, ""})
-	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 0,
-		r.Header.Get(tokens.AuthTokenHeaderName))
-	hub.QueuedBattles.Store(lobbyId, battle)
-	go func() {
-		defer func() {
-			if !battleLobby.Started {
-				log.Warn("Player left queue")
-				defer hub.QueuedBattles.Delete(lobbyId)
-			}
-		}()
-		for !battleLobby.Started {
-			select {
-			case <-battleLobby.EndConnectionChannels[0]:
-				return
-			case <-battleLobby.EndConnectionChannels[1]:
-				return
-			case <-battle.StartChannel:
-				return
-			}
+	_, err = battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
+	if err != nil {
+		log.Error(err)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		_ = conn.Close()
+		return
+	}
 
+	hub.QueuedBattles.Store(lobbyId.Hex(), battle)
+	go func() {
+		timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
+		select {
+		case <-timer.C:
+			log.Error("Closing lobby because no player joined")
+			ws.CloseLobby(battleLobby)
+			hub.QueuedBattles.Delete(lobbyId)
+		case <-battleLobby.Started:
+			return
+		case <-battleLobby.EndConnectionChannels[0]:
+			log.Warn("Player left 0 queue")
+			hub.QueuedBattles.Delete(lobbyId)
+			return
+		case <-battleLobby.EndConnectionChannels[1]:
+			log.Warn("Player left 1 queue")
+			hub.QueuedBattles.Delete(lobbyId)
+			return
 		}
 	}()
 }
@@ -218,7 +230,8 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	contentBytes, err := json.Marshal(toMarshal)
 	if err != nil {
-		log.Fatal(wrapChallengeToBattleError(err))
+		log.Error(wrapChallengeToBattleError(err))
+		return
 	}
 	notification := utils.Notification{
 		Id:       primitive.NewObjectID(),
@@ -241,47 +254,36 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	battleLobby := ws.NewLobby(lobbyId)
-	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
-	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 0,
-		r.Header.Get(tokens.AuthTokenHeaderName))
-	hub.AwaitingLobbies.Store(lobbyId, battle)
+	battleLobby := ws.NewLobby(lobbyId, 2)
 	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
+	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
+	if _, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName)); err != nil {
+		log.Error(wrapChallengeToBattleError(err))
+		return
+	}
 
+	hub.AwaitingLobbies.Store(lobbyId, battle)
 	go func() {
 		timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
-
 		select {
-		case <-timer.C:
-			if !battleLobby.Started {
-				log.Error("Closing lobby because no player joined")
-				ws.CloseLobby(battleLobby)
-				hub.AwaitingLobbies.Delete(lobbyId)
-			}
 		case <-battle.RejectChannel:
 			battle.SendRejectedBattle()
 			hub.AwaitingLobbies.Delete(lobbyId)
 			return
-		}
-	}()
-
-	go func() {
-		defer func() {
-			if !battleLobby.Started {
-				log.Error("Player left challenge lobby early")
-				defer hub.AwaitingLobbies.Delete(lobbyId)
-			}
-		}()
-		for !battleLobby.Started {
-			select {
-			case <-battleLobby.EndConnectionChannels[0]:
-				return
-			case <-battleLobby.EndConnectionChannels[1]:
-				return
-			case <-battle.StartChannel:
-				return
-			}
-
+		case <-timer.C:
+			log.Error("Closing lobby because no player joined")
+			ws.CloseLobby(battleLobby)
+			hub.AwaitingLobbies.Delete(lobbyId)
+		case <-battleLobby.Started:
+			return
+		case <-battleLobby.EndConnectionChannels[0]:
+			log.Warn("Player left 0 lobby")
+			hub.AwaitingLobbies.Delete(lobbyId)
+			return
+		case <-battleLobby.EndConnectionChannels[1]:
+			log.Warn("Player left 1 lobby")
+			hub.AwaitingLobbies.Delete(lobbyId)
+			return
 		}
 	}()
 }
@@ -319,7 +321,6 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pokemonsForBattle {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
-
 	// TODO error not verified?
 	lobbyId, err := primitive.ObjectIDFromHex(mux.Vars(r)[api.BattleIdPathVar])
 
@@ -331,8 +332,6 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	value, ok := hub.AwaitingLobbies.Load(lobbyId)
-	battle := value.(valueType)
-
 	if !ok {
 		log.Error(wrapAcceptChallengeError(errorBattleDoesNotExist))
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(errorBattleDoesNotExist.Error()))
@@ -340,6 +339,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	battle := value.(valueType)
 	if battle.Expected[1] != authToken.Username {
 		log.Error(wrapAcceptChallengeError(err))
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(errorPlayerUnauthorized.Error()))
@@ -347,12 +347,19 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hub.AwaitingLobbies.Delete(lobbyId)
 	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
-	battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, 1,
-		r.Header.Get(tokens.AuthTokenHeaderName))
-	startBattle(trainersClient, lobbyId, battle)
-	emitStartBattle()
+	playerNr, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
+
+	if err != nil {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		_ = conn.Close()
+	}
+
+	if playerNr == 2 {
+		startBattle(trainersClient, lobbyId, battle)
+		emitStartBattle()
+		hub.AwaitingLobbies.Delete(lobbyId)
+	}
 }
 
 func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {

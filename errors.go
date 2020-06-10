@@ -15,6 +15,8 @@ const (
 	errorStartBattleFormat   = "error starting battle %s"
 
 	errorUserFormat = "error occurred with user %s"
+
+	errorAddPlayer = "error adding player to battle"
 )
 
 var (
@@ -62,6 +64,10 @@ func wrapMainLoopError(err error) error {
 
 func wrapSetupLoopError(err error) error {
 	return errors.Wrap(err, errorSetupLoop)
+}
+
+func wrapAddPlayerError(err error) error {
+	return errors.Wrap(err, errorAddPlayer)
 }
 
 // Errors

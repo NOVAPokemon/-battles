@@ -18,7 +18,6 @@ type (
 		AuthTokens          [2]string
 		PlayersBattleStatus [2]*battles.TrainerBattleStatus
 		Winner              string
-		StartChannel        chan struct{}
 		RejectChannel       chan struct{}
 		Selecting           bool
 		Finished            bool
@@ -34,7 +33,6 @@ func NewBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *Battle {
 		AuthTokens:          [2]string{},
 		PlayersBattleStatus: [2]*battles.TrainerBattleStatus{},
 		Finished:            false,
-		StartChannel:        make(chan struct{}),
 		RejectChannel:       make(chan struct{}),
 		Winner:              "",
 		Lobby:               lobby,
@@ -44,7 +42,13 @@ func NewBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *Battle {
 }
 
 func (b *Battle) addPlayer(username string, pokemons map[string]*pokemons.Pokemon, stats *utils.TrainerStats,
-	trainerItems map[string]items.Item, trainerConn *websocket.Conn, playerNr int, authToken string) {
+	trainerItems map[string]items.Item, trainerConn *websocket.Conn, authToken string) (int, error) {
+
+	trainersJoined, err := ws.AddTrainer(b.Lobby, username, trainerConn)
+
+	if err != nil {
+		return -1, wrapAddPlayerError(err)
+	}
 
 	player := &battles.TrainerBattleStatus{
 		Username:        username,
@@ -56,15 +60,14 @@ func (b *Battle) addPlayer(username string, pokemons map[string]*pokemons.Pokemo
 		UsedItems:       make(map[string]items.Item),
 	}
 
-	ws.AddTrainer(b.Lobby, username, trainerConn)
-	b.PlayersBattleStatus[playerNr] = player
-	b.AuthTokens[playerNr] = authToken
+	b.PlayersBattleStatus[trainersJoined-1] = player
+	b.AuthTokens[trainersJoined-1] = authToken
+
+	return trainersJoined, nil
 }
 
 func (b *Battle) StartBattle() (string, error) {
-	close(b.StartChannel)
-	b.Lobby.Started = true
-
+	ws.StartLobby(b.Lobby)
 	err := b.setupLoop()
 	if err != nil {
 		return "", wrapStartBattleError(err, b.Lobby.Id.Hex())
