@@ -259,12 +259,12 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 		break
 	case battles.Defend:
 		battles.HandleDefendMove(issuer, issuerChan, b.cooldown)
-		issuerChan <- (ws.GenericMsg{
+		issuerChan <- ws.GenericMsg{
 			MsgType: websocket.TextMessage,
 			Data: []byte(battles.StatusMessage{
 				Message: "Enemy is defending",
 			}.SerializeToWSMessage().Serialize()),
-		})
+		}
 	case battles.UseItem:
 		desMsg, err := battles.DeserializeBattleMsg(message)
 		if err != nil {
@@ -289,13 +289,13 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 		}
 	default:
 		log.Error(ws.NewInvalidMsgTypeError(message.MsgType))
-		issuerChan <- (ws.GenericMsg{
+		issuerChan <- ws.GenericMsg{
 			MsgType: websocket.TextMessage,
 			Data: []byte(ws.ErrorMessage{
 				Info:  ws.ErrorInvalidMessageType.Error(),
 				Fatal: false,
 			}.SerializeToWSMessage().Serialize()),
-		})
+		}
 	}
 }
 
