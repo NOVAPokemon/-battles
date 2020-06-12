@@ -171,7 +171,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-timer.C:
 			log.Error("Closing lobby because no player joined")
-			ws.CloseLobby(battleLobby)
+			ws.CloseLobbyConnections(battleLobby)
 			hub.QueuedBattles.Delete(lobbyId)
 		case <-battleLobby.Started:
 			return
@@ -272,7 +272,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-timer.C:
 			log.Error("Closing lobby because no player joined")
-			ws.CloseLobby(battleLobby)
+			ws.CloseLobbyConnections(battleLobby)
 			hub.AwaitingLobbies.Delete(lobbyId)
 		case <-battleLobby.Started:
 			return
@@ -412,7 +412,7 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 	winner, err := battle.StartBattle()
 	if err != nil {
 		log.Error(err)
-		ws.CloseLobby(battle.Lobby)
+		ws.CloseLobbyConnections(battle.Lobby)
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
 		err := commitBattleResults(trainersClient, battleId.Hex(), battle)
@@ -550,7 +550,7 @@ func commitBattleResults(trainersClient *clients.TrainersClient, battleId string
 }
 
 func RemoveUsedItems(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus, authToken string,
-	outChan *ws.SyncChannel) error {
+	outChan chan ws.GenericMsg) error {
 
 	usedItems := player.UsedItems
 	if len(usedItems) == 0 {
@@ -572,20 +572,16 @@ func RemoveUsedItems(trainersClient *clients.TrainersClient, player battles.Trai
 		TokenField:   tokens.ItemsTokenHeaderName,
 		TokensString: []string{trainersClient.ItemsToken},
 	}.SerializeToWSMessage()
-	err = outChan.Write(ws.GenericMsg{
+	outChan <- ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(setTokensMessage.Serialize()),
-	})
-
-	if err != nil {
-		return err
 	}
 
 	return nil
 }
 
 func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus,
-	authToken string, outChan *ws.SyncChannel, xpAmount float64) error {
+	authToken string, outChan chan ws.GenericMsg, xpAmount float64) error {
 
 	// updates pokemon status after battle: adds XP and updates HP
 	// player 0
@@ -611,20 +607,15 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 		TokenField:   tokens.PokemonsTokenHeaderName,
 		TokensString: toSend,
 	}.SerializeToWSMessage()
-	err := outChan.Write(ws.GenericMsg{
+	outChan <- ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(setTokensMessage.Serialize()),
-	})
-
-	if err != nil {
-		return err
 	}
-
 	return nil
 }
 
 func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus,
-	authToken string, outChan *ws.SyncChannel, XPAmount float64) error {
+	authToken string, outChan chan ws.GenericMsg, XPAmount float64) error {
 
 	stats := player.TrainerStats
 	stats.XP += XPAmount
@@ -639,13 +630,9 @@ func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battle
 		TokensString: []string{trainersClient.TrainerStatsToken},
 	}.SerializeToWSMessage()
 
-	err = outChan.Write(ws.GenericMsg{
+	outChan <- ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(setTokensMessage.Serialize()),
-	})
-
-	if err != nil {
-		return err
 	}
 
 	return nil
