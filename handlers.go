@@ -164,27 +164,8 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 		return
 	}
-
 	hub.QueuedBattles.Store(lobbyId.Hex(), battle)
-	go func() {
-		timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
-		select {
-		case <-timer.C:
-			log.Error("Closing lobby because no player joined")
-			ws.CloseLobbyConnections(battleLobby)
-			hub.QueuedBattles.Delete(lobbyId)
-		case <-battleLobby.Started:
-			return
-		case <-battleLobby.EndConnectionChannels[0]:
-			log.Warn("Player left 0 queue")
-			hub.QueuedBattles.Delete(lobbyId)
-			return
-		case <-battleLobby.EndConnectionChannels[1]:
-			log.Warn("Player left 1 queue")
-			hub.QueuedBattles.Delete(lobbyId)
-			return
-		}
-	}()
+	go cleanBattle(battle, hub.QueuedBattles)
 }
 
 func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
@@ -263,29 +244,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub.AwaitingLobbies.Store(lobbyId, battle)
-	go func() {
-		timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
-		select {
-		case <-battle.RejectChannel:
-			battle.SendRejectedBattle()
-			hub.AwaitingLobbies.Delete(lobbyId)
-			return
-		case <-timer.C:
-			log.Error("Closing lobby because no player joined")
-			ws.CloseLobbyConnections(battleLobby)
-			hub.AwaitingLobbies.Delete(lobbyId)
-		case <-battleLobby.Started:
-			return
-		case <-battleLobby.EndConnectionChannels[0]:
-			log.Warn("Player left 0 lobby")
-			hub.AwaitingLobbies.Delete(lobbyId)
-			return
-		case <-battleLobby.EndConnectionChannels[1]:
-			log.Warn("Player left 1 lobby")
-			hub.AwaitingLobbies.Delete(lobbyId)
-			return
-		}
-	}()
+	go cleanBattle(battle, hub.AwaitingLobbies)
 }
 
 func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
@@ -612,6 +571,27 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 		Data:    []byte(setTokensMessage.Serialize()),
 	}
 	return nil
+}
+
+func cleanBattle(battle *Battle, containgMap sync.Map) {
+	timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		log.Warnf("closing lobby %s since time expired", battle.Lobby.Id.Hex())
+		if ws.GetTrainersJoined(battle.Lobby) > 0 {
+			battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
+				MsgType: websocket.TextMessage,
+				Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
+			}
+			ws.FinishLobby(battle.Lobby)
+			<-battle.Lobby.EndConnectionChannels[0]
+			ws.CloseLobbyConnections(battle.Lobby)
+		}
+		ws.CloseLobbyConnections(battle.Lobby)
+		containgMap.Delete(battle.Lobby.Id.Hex())
+	case <-battle.Lobby.Started:
+	}
 }
 
 func AddExperienceToPlayer(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus,

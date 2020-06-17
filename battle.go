@@ -59,7 +59,6 @@ func (b *Battle) addPlayer(username string, pokemons map[string]*pokemons.Pokemo
 
 	b.PlayersBattleStatus[trainersJoined-1] = player
 	b.AuthTokens[trainersJoined-1] = authToken
-
 	return trainersJoined, nil
 }
 
@@ -97,7 +96,6 @@ func (b *Battle) setupLoop() error {
 	// loops until both players have selected a pokemon
 	for ; players[0].SelectedPokemon == nil || players[1].SelectedPokemon == nil; {
 		b.logBattleStatus()
-
 		select {
 		case msgStr, ok := <-b.Lobby.TrainerInChannels[0]:
 			if ok {
@@ -297,17 +295,6 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 			}.SerializeToWSMessage().Serialize()),
 		}
 	}
-}
-
-func (b *Battle) SendRejectedBattle() {
-	b.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
-		MsgType: websocket.TextMessage,
-		Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
-	}
-
-	ws.FinishLobby(b.Lobby)
-	<-b.Lobby.EndConnectionChannels[0]
-	ws.CloseLobbyConnections(b.Lobby)
 }
 
 func (b *Battle) FinishBattle() {
