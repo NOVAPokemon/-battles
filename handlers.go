@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"runtime"
 	"sync"
 	"time"
 
@@ -362,12 +361,8 @@ func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 }
 
 func startBattle(trainersClient *clients.TrainersClient, battleId primitive.ObjectID, battle *Battle) {
-	defer log.Info("Cleaning lobby")
-	defer hub.ongoingBattles.Delete(battleId)
-
 	log.Infof("Battle %s starting...", battleId.Hex())
 	hub.ongoingBattles.Store(battleId, battle)
-
 	winner, err := battle.StartBattle()
 	if err != nil {
 		log.Error(err)
@@ -381,8 +376,7 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 		battle.FinishBattle()
 	}
 	emitEndBattle()
-	// finish battle
-	log.Warnf("Active goroutines: %d", runtime.NumGoroutine())
+	hub.ongoingBattles.Delete(battleId)
 }
 
 func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, username string,
@@ -590,6 +584,14 @@ func cleanBattle(battle *Battle, containgMap sync.Map) {
 		}
 		ws.CloseLobbyConnections(battle.Lobby)
 		containgMap.Delete(battle.Lobby.Id.Hex())
+	case <-battle.RejectChannel:
+		battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
+			MsgType: websocket.TextMessage,
+			Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
+		}
+		ws.FinishLobby(battle.Lobby)
+		<-battle.Lobby.EndConnectionChannels[0]
+		ws.CloseLobbyConnections(battle.Lobby)
 	case <-battle.Lobby.Started:
 	}
 }
