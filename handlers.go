@@ -132,8 +132,9 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	found := false
+	var battle *Battle
 	hub.QueuedBattles.Range(func(key, value interface{}) bool {
-		battle := value.(valueType)
+		battle = value.(valueType)
 		playerNr, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
 		if err != nil {
 			log.Error(err)
@@ -142,19 +143,19 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		if playerNr == 2 {
 			found = true
 			startBattle(trainersClient, battle.Lobby.Id, battle)
-			hub.QueuedBattles.Delete(key)
 			return false
 		}
 		return true
 	})
 
 	if found {
+		hub.QueuedBattles.Delete(battle.Lobby.Id)
 		return
 	}
 
 	lobbyId := primitive.NewObjectID()
 	battleLobby := ws.NewLobby(lobbyId, 2)
-	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, ""})
+	battle = NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, ""})
 	_, err = battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
 	if err != nil {
 		log.Error(err)
@@ -162,7 +163,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 		return
 	}
-	hub.QueuedBattles.Store(lobbyId.Hex(), battle)
+	hub.QueuedBattles.Store(lobbyId, battle)
 	go cleanBattle(battle, &hub.QueuedBattles)
 }
 
