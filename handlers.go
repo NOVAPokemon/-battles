@@ -142,7 +142,6 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		if playerNr == 2 {
 			found = true
 			startBattle(trainersClient, battle.Lobby.Id, battle)
-			emitStartBattle()
 			hub.QueuedBattles.Delete(key)
 			return false
 		}
@@ -315,7 +314,6 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 
 	if playerNr == 2 {
 		startBattle(trainersClient, lobbyId, battle)
-		emitStartBattle()
 		hub.AwaitingLobbies.Delete(lobbyId)
 	}
 }
@@ -363,6 +361,7 @@ func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 func startBattle(trainersClient *clients.TrainersClient, battleId primitive.ObjectID, battle *Battle) {
 	log.Infof("Battle %s starting...", battleId.Hex())
 	hub.ongoingBattles.Store(battleId, battle)
+	emitStartBattle()
 	winner, err := battle.StartBattle()
 	if err != nil {
 		log.Error(err)
