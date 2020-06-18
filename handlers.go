@@ -164,7 +164,7 @@ func HandleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hub.QueuedBattles.Store(lobbyId.Hex(), battle)
-	go cleanBattle(battle, hub.QueuedBattles)
+	go cleanBattle(battle, &hub.QueuedBattles)
 }
 
 func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +243,7 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub.AwaitingLobbies.Store(lobbyId, battle)
-	go cleanBattle(battle, hub.AwaitingLobbies)
+	go cleanBattle(battle, &hub.AwaitingLobbies)
 }
 
 func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
@@ -567,7 +567,7 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 	return nil
 }
 
-func cleanBattle(battle *Battle, containgMap sync.Map) {
+func cleanBattle(battle *Battle, containgMap *sync.Map) {
 	timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
 	defer timer.Stop()
 	select {
