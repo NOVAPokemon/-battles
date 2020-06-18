@@ -567,12 +567,25 @@ func UpdateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 	return nil
 }
 
-func cleanBattle(battle *Battle, containgMap *sync.Map) {
+func cleanBattle(battle *Battle, containingMap *sync.Map) {
 	timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
 	defer timer.Stop()
+	defer containingMap.Delete(battle.Lobby.Id)
 	select {
 	case <-timer.C:
 		log.Warnf("closing lobby %s since time expired", battle.Lobby.Id.Hex())
+		if ws.GetTrainersJoined(battle.Lobby) > 0 {
+			battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
+				MsgType: websocket.TextMessage,
+				Data: []byte(ws.FinishMessage{
+					Success: false,
+				}.SerializeToWSMessage().Serialize()),
+			}
+			ws.FinishLobby(battle.Lobby)
+			<-battle.Lobby.EndConnectionChannels[0]
+		}
+		ws.CloseLobbyConnections(battle.Lobby)
+	case <-battle.RejectChannel:
 		if ws.GetTrainersJoined(battle.Lobby) > 0 {
 			battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
 				MsgType: websocket.TextMessage,
@@ -580,17 +593,7 @@ func cleanBattle(battle *Battle, containgMap *sync.Map) {
 			}
 			ws.FinishLobby(battle.Lobby)
 			<-battle.Lobby.EndConnectionChannels[0]
-			ws.CloseLobbyConnections(battle.Lobby)
 		}
-		ws.CloseLobbyConnections(battle.Lobby)
-		containgMap.Delete(battle.Lobby.Id.Hex())
-	case <-battle.RejectChannel:
-		battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
-			MsgType: websocket.TextMessage,
-			Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
-		}
-		ws.FinishLobby(battle.Lobby)
-		<-battle.Lobby.EndConnectionChannels[0]
 		ws.CloseLobbyConnections(battle.Lobby)
 	case <-battle.Lobby.Started:
 	}
