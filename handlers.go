@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/NOVAPokemon/utils/notifications"
+	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -14,12 +16,10 @@ import (
 	"github.com/NOVAPokemon/utils/clients"
 	"github.com/NOVAPokemon/utils/experience"
 	"github.com/NOVAPokemon/utils/items"
-	"github.com/NOVAPokemon/utils/notifications"
 	"github.com/NOVAPokemon/utils/pokemons"
 	"github.com/NOVAPokemon/utils/tokens"
 	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
-	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
@@ -203,6 +203,17 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Player %s challenged %s for a battle", authToken.Username, challengedPlayer)
 
 	lobbyId := primitive.NewObjectID()
+	battleLobby := ws.NewLobby(lobbyId, 2)
+	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
+	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
+	if _, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName)); err != nil {
+		log.Error(wrapChallengeToBattleError(err))
+		return
+	}
+
+	hub.AwaitingLobbies.Store(lobbyId, battle)
+	go cleanBattle(battle, &hub.AwaitingLobbies)
+
 	toMarshal := notifications.WantsToBattleContent{Username: challengedPlayer,
 		LobbyId:        lobbyId.Hex(),
 		ServerHostname: fmt.Sprintf("%s.%s", serverName, serviceNameHeadless),
@@ -233,17 +244,6 @@ func HandleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		utils.LogAndSendHTTPError(&w, err, http.StatusInternalServerError)
 		return
 	}
-
-	battleLobby := ws.NewLobby(lobbyId, 2)
-	log.Infof("Created lobby: %s", battleLobby.Id.Hex())
-	battle := NewBattle(battleLobby, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
-	if _, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName)); err != nil {
-		log.Error(wrapChallengeToBattleError(err))
-		return
-	}
-
-	hub.AwaitingLobbies.Store(lobbyId, battle)
-	go cleanBattle(battle, &hub.AwaitingLobbies)
 }
 
 func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
