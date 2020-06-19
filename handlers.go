@@ -575,25 +575,29 @@ func cleanBattle(battle *Battle, containingMap *sync.Map) {
 	case <-timer.C:
 		log.Warnf("closing lobby %s since time expired", battle.Lobby.Id.Hex())
 		if ws.GetTrainersJoined(battle.Lobby) > 0 {
-			battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
+			select {
+			case battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
 				MsgType: websocket.TextMessage,
 				Data: []byte(ws.FinishMessage{
 					Success: false,
 				}.SerializeToWSMessage().Serialize()),
+			}:
+			default:
 			}
-			ws.FinishLobby(battle.Lobby)
-			<-battle.Lobby.EndConnectionChannels[0]
 		}
+		ws.FinishLobby(battle.Lobby)
 		ws.CloseLobbyConnections(battle.Lobby)
 	case <-battle.RejectChannel:
 		if ws.GetTrainersJoined(battle.Lobby) > 0 {
-			battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
+			select {
+			case battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
 				MsgType: websocket.TextMessage,
 				Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
+			}:
+			default:
 			}
-			ws.FinishLobby(battle.Lobby)
-			<-battle.Lobby.EndConnectionChannels[0]
 		}
+		ws.FinishLobby(battle.Lobby)
 		ws.CloseLobbyConnections(battle.Lobby)
 	case <-battle.Lobby.Started:
 	}
