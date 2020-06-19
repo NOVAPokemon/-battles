@@ -366,7 +366,6 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 	winner, err := battle.StartBattle()
 	if err != nil {
 		log.Error(err)
-		ws.CloseLobbyConnections(battle.Lobby)
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
 		err := commitBattleResults(trainersClient, battleId.Hex(), battle)
