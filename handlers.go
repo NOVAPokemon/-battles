@@ -585,7 +585,6 @@ func cleanBattle(battle *Battle, containingMap *sync.Map) {
 			}
 		}
 		ws.FinishLobby(battle.Lobby)
-		ws.CloseLobbyConnections(battle.Lobby)
 	case <-battle.RejectChannel:
 		if ws.GetTrainersJoined(battle.Lobby) > 0 {
 			select {
@@ -597,7 +596,6 @@ func cleanBattle(battle *Battle, containingMap *sync.Map) {
 			}
 		}
 		ws.FinishLobby(battle.Lobby)
-		ws.CloseLobbyConnections(battle.Lobby)
 	case <-battle.Lobby.Started:
 	}
 }

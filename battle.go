@@ -107,12 +107,18 @@ func (b *Battle) setupLoop() error {
 				b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[1],
 					b.Lobby.TrainerOutChannels[1])
 			}
-		case <-b.Lobby.EndConnectionChannels[0]:
+		case <-b.Lobby.DoneListeningFromConn[0]:
 			err := newUserError(b.PlayersBattleStatus[0].Username)
-			return wrapSetupLoopError(err)
-		case <-b.Lobby.EndConnectionChannels[1]:
-			err := newUserError(b.PlayersBattleStatus[1].Username)
-			return wrapSetupLoopError(err)
+			return wrapMainLoopError(err)
+		case <-b.Lobby.DoneListeningFromConn[1]:
+			err := newUserError(b.PlayersBattleStatus[0].Username)
+			return wrapMainLoopError(err)
+		case <-b.Lobby.DoneWritingToConn[1]:
+			err := newUserError(b.PlayersBattleStatus[0].Username)
+			return wrapMainLoopError(err)
+		case <-b.Lobby.DoneWritingToConn[0]:
+			err := newUserError(b.PlayersBattleStatus[0].Username)
+			return wrapMainLoopError(err)
 		}
 	}
 
@@ -148,11 +154,17 @@ func (b *Battle) mainLoop() (string, error) {
 			b.PlayersBattleStatus[1].Cooldown = false
 			b.PlayersBattleStatus[1].Defending = false
 			log.Warn("Removed player 1 Cooldown status")
-		case <-b.Lobby.EndConnectionChannels[0]:
+		case <-b.Lobby.DoneListeningFromConn[0]:
 			err := newUserError(b.PlayersBattleStatus[0].Username)
 			return "", wrapMainLoopError(err)
-		case <-b.Lobby.EndConnectionChannels[1]:
-			err := newUserError(b.PlayersBattleStatus[1].Username)
+		case <-b.Lobby.DoneListeningFromConn[1]:
+			err := newUserError(b.PlayersBattleStatus[0].Username)
+			return "", wrapMainLoopError(err)
+		case <-b.Lobby.DoneWritingToConn[1]:
+			err := newUserError(b.PlayersBattleStatus[0].Username)
+			return "", wrapMainLoopError(err)
+		case <-b.Lobby.DoneWritingToConn[0]:
+			err := newUserError(b.PlayersBattleStatus[0].Username)
 			return "", wrapMainLoopError(err)
 		case <-b.Lobby.Finished:
 			return "", wrapMainLoopError(errors.New("Lobby was finished before battle ended"))
@@ -160,7 +172,7 @@ func (b *Battle) mainLoop() (string, error) {
 	}
 }
 
-func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.TrainerBattleStatus, issuerChan chan ws.GenericMsg) {
+func (b *Battle) handleMoveInSelectionPhase(msgStr string, issuer *battles.TrainerBattleStatus, issuerChan chan ws.GenericMsg) {
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
 		log.Error(err)
@@ -194,9 +206,8 @@ func (b *Battle) handleMoveInSelectionPhase(msgStr *string, issuer *battles.Trai
 }
 
 // handles the reception of a move from a player.
-func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battles.TrainerBattleStatus,
+func (b *Battle) handlePlayerMessage(msgStr string, issuer, otherPlayer *battles.TrainerBattleStatus,
 	issuerChan, otherPlayerChan chan ws.GenericMsg) (battleFinished bool) {
-
 	message, err := ws.ParseMessage(msgStr)
 	if err != nil {
 		log.Error(err)
@@ -293,26 +304,13 @@ func (b *Battle) handlePlayerMessage(msgStr *string, issuer, otherPlayer *battle
 }
 
 func (b *Battle) FinishBattle() {
-	ws.FinishLobby(b.Lobby)
 	toSend := ws.GenericMsg{
 		MsgType: websocket.TextMessage,
 		Data:    []byte(ws.FinishMessage{}.SerializeToWSMessage().Serialize()),
 	}
-
-	select {
-	case b.Lobby.TrainerOutChannels[0] <- toSend:
-	case <-b.Lobby.EndConnectionChannels[0]:
-	}
-
-	select {
-	case b.Lobby.TrainerOutChannels[1] <- toSend:
-	case <-b.Lobby.EndConnectionChannels[1]:
-	}
-
-	<-b.Lobby.EndConnectionChannels[1]
-	<-b.Lobby.EndConnectionChannels[0]
-
-	ws.CloseLobbyConnections(b.Lobby)
+	b.Lobby.TrainerOutChannels[0] <- toSend
+	b.Lobby.TrainerOutChannels[1] <- toSend
+	ws.FinishLobby(b.Lobby)
 }
 
 func (b *Battle) logBattleStatus() {
