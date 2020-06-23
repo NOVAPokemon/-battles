@@ -307,6 +307,13 @@ func (b *Battle) FinishBattle() {
 	}
 	b.Lobby.TrainerOutChannels[0] <- toSend
 	b.Lobby.TrainerOutChannels[1] <- toSend
+
+	select {
+	case <-b.Lobby.DoneListeningFromConn[0]:
+	case <-b.Lobby.DoneListeningFromConn[1]:
+	case <-time.After(3 * time.Second):
+	}
+
 	ws.FinishLobby(b.Lobby)
 }
 
