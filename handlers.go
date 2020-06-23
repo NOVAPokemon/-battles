@@ -366,13 +366,14 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 	winner, err := battle.StartBattle()
 	if err != nil {
 		log.Error(err)
+		ws.FinishLobby(battle.Lobby) // abort lobby without commiting
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
 		err := commitBattleResults(trainersClient, battleId.Hex(), battle)
 		if err != nil {
 			log.Error(err)
 		}
-		battle.FinishBattle()
+		battle.FinishBattle() // wait for graceful finish
 	}
 	emitEndBattle()
 	hub.ongoingBattles.Delete(battleId)
