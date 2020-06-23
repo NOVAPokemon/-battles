@@ -16,11 +16,11 @@ import (
 type (
 	Battle struct {
 		Lobby               *ws.Lobby
+		Winner              string
+		cooldown            time.Duration
+		RejectChannel       chan struct{}
 		AuthTokens          [2]string
 		PlayersBattleStatus [2]*battles.TrainerBattleStatus
-		Winner              string
-		RejectChannel       chan struct{}
-		cooldown            time.Duration
 		Expected            [2]string
 	}
 )
@@ -92,32 +92,29 @@ func (b *Battle) setupLoop() error {
 	}
 
 	log.Info("Sent START message")
-
 	// loops until both players have selected a pokemon
 	for ; players[0].SelectedPokemon == nil || players[1].SelectedPokemon == nil; {
 		b.logBattleStatus()
 		select {
 		case msgStr, ok := <-b.Lobby.TrainerInChannels[0]:
 			if ok {
-				b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[0],
-					b.Lobby.TrainerOutChannels[0])
+				b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[0], b.Lobby.TrainerOutChannels[0])
 			}
 		case msgStr, ok := <-b.Lobby.TrainerInChannels[1]:
 			if ok {
-				b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[1],
-					b.Lobby.TrainerOutChannels[1])
+				b.handleMoveInSelectionPhase(msgStr, b.PlayersBattleStatus[1], b.Lobby.TrainerOutChannels[1])
 			}
 		case <-b.Lobby.DoneListeningFromConn[0]:
 			err := newUserError(b.PlayersBattleStatus[0].Username)
 			return wrapMainLoopError(err)
 		case <-b.Lobby.DoneListeningFromConn[1]:
-			err := newUserError(b.PlayersBattleStatus[0].Username)
-			return wrapMainLoopError(err)
-		case <-b.Lobby.DoneWritingToConn[1]:
-			err := newUserError(b.PlayersBattleStatus[0].Username)
+			err := newUserError(b.PlayersBattleStatus[1].Username)
 			return wrapMainLoopError(err)
 		case <-b.Lobby.DoneWritingToConn[0]:
 			err := newUserError(b.PlayersBattleStatus[0].Username)
+			return wrapMainLoopError(err)
+		case <-b.Lobby.DoneWritingToConn[1]:
+			err := newUserError(b.PlayersBattleStatus[1].Username)
 			return wrapMainLoopError(err)
 		}
 	}
@@ -158,13 +155,13 @@ func (b *Battle) mainLoop() (string, error) {
 			err := newUserError(b.PlayersBattleStatus[0].Username)
 			return "", wrapMainLoopError(err)
 		case <-b.Lobby.DoneListeningFromConn[1]:
-			err := newUserError(b.PlayersBattleStatus[0].Username)
-			return "", wrapMainLoopError(err)
-		case <-b.Lobby.DoneWritingToConn[1]:
-			err := newUserError(b.PlayersBattleStatus[0].Username)
+			err := newUserError(b.PlayersBattleStatus[1].Username)
 			return "", wrapMainLoopError(err)
 		case <-b.Lobby.DoneWritingToConn[0]:
 			err := newUserError(b.PlayersBattleStatus[0].Username)
+			return "", wrapMainLoopError(err)
+		case <-b.Lobby.DoneWritingToConn[1]:
+			err := newUserError(b.PlayersBattleStatus[1].Username)
 			return "", wrapMainLoopError(err)
 		case <-b.Lobby.Finished:
 			return "", wrapMainLoopError(errors.New("Lobby was finished before battle ended"))
