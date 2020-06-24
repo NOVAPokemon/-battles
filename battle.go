@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/pkg/errors"
+	"sync"
 	"time"
 
 	"github.com/NOVAPokemon/utils"
@@ -307,13 +308,19 @@ func (b *Battle) FinishBattle() {
 	}
 	b.Lobby.TrainerOutChannels[0] <- toSend
 	b.Lobby.TrainerOutChannels[1] <- toSend
-
-	select {
-	case <-b.Lobby.DoneListeningFromConn[0]:
-	case <-b.Lobby.DoneListeningFromConn[1]:
-	case <-time.After(3 * time.Second):
+	wg := sync.WaitGroup{}
+	for i := 0; i < ws.GetTrainersJoined(b.Lobby); i++ {
+		wg.Add(1)
+		trainerNr := i
+		go func() {
+			defer wg.Done()
+			select {
+			case <-b.Lobby.DoneListeningFromConn[trainerNr]:
+			case <-time.After(3 * time.Second):
+			}
+		}()
 	}
-
+	wg.Wait()
 	ws.FinishLobby(b.Lobby)
 }
 
