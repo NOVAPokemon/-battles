@@ -3,13 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/NOVAPokemon/utils/notifications"
-	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/NOVAPokemon/utils/notifications"
+	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/api"

@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/pkg/errors"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/items"
