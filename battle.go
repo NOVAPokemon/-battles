@@ -1,19 +1,16 @@
 package main
 
 import (
-	"github.com/pkg/errors"
-	"sync"
-	"time"
-
-	"github.com/pkg/errors"
-
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/items"
 	"github.com/NOVAPokemon/utils/pokemons"
 	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"sync"
+	"time"
 )
 
 type (
