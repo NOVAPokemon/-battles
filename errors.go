@@ -9,7 +9,6 @@ import (
 
 const (
 	errorMainLoop  = "error in battle main loop"
-	errorSetupLoop = "error in battle setup loop"
 
 	errorCommitResultsFormat = "error commmiting results for battle %s"
 	errorStartBattleFormat   = "error starting battle %s"
@@ -60,10 +59,6 @@ func wrapStartBattleError(err error, battleId string) error {
 
 func wrapMainLoopError(err error) error {
 	return errors.Wrap(err, errorMainLoop)
-}
-
-func wrapSetupLoopError(err error) error {
-	return errors.Wrap(err, errorSetupLoop)
 }
 
 func wrapAddPlayerError(err error) error {
