@@ -343,7 +343,7 @@ func HandleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 	var battleInterface interface{}
 	battleInterface, ok = hub.AwaitingLobbies.Load(lobbyId)
 	if !ok {
-		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusBadRequest)
+		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusNotFound)
 		return
 
 	}
