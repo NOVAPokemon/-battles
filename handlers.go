@@ -579,11 +579,15 @@ func cleanBattle(battle *Battle, containingMap *sync.Map) {
 	case <-battle.RejectChannel:
 		if ws.GetTrainersJoined(battle.Lobby) > 0 {
 			select {
-			case battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
-				MsgType: websocket.TextMessage,
-				Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
-			}:
+			case <-battle.Lobby.DoneListeningFromConn[0]:
 			default:
+				select {
+				case battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
+					MsgType: websocket.TextMessage,
+					Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
+				}:
+				default:
+				}
 			}
 		}
 		ws.FinishLobby(battle.Lobby)
