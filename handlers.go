@@ -292,7 +292,7 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 
 	value, ok := hub.AwaitingLobbies.Load(lobbyId)
 	if !ok {
-		log.Error(wrapAcceptChallengeError(errorBattleDoesNotExist))
+		log.Warn(wrapAcceptChallengeError(errorBattleDoesNotExist))
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(errorBattleDoesNotExist.Error()))
 		_ = conn.Close()
 		return
