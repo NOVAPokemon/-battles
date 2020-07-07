@@ -11,6 +11,7 @@ import (
 
 	"github.com/NOVAPokemon/utils/notifications"
 	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
+	"github.com/pkg/errors"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/api"
@@ -135,13 +136,17 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	found := false
 	var (
 		battleAux *battleLobby
-		playerNr int
+		playerNr  int
 	)
 	hub.QueuedBattles.Range(func(key, value interface{}) bool {
 		battleAux = value.(valueType)
 		playerNr, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
 		if err != nil {
-			log.Error(err)
+			if errors.Cause(err) == ws.ErrorLobbyIsFull {
+				log.Warn(err)
+			} else {
+				log.Error(err)
+			}
 			return true
 		}
 		if playerNr == 2 {
@@ -162,7 +167,11 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	battleAux = createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, ""})
 	_, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
 	if err != nil {
-		log.Error(err)
+		if errors.Cause(err) == ws.ErrorLobbyIsFull {
+			log.Warn(err)
+		} else {
+			log.Error(err)
+		}
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
 		_ = conn.Close()
 		return
@@ -211,7 +220,11 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Created lobby: %s", battle.Id.Hex())
 	newBattle := createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
 	if _, err = newBattle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName)); err != nil {
-		log.Error(wrapChallengeToBattleError(err))
+		if errors.Cause(err) == ws.ErrorLobbyIsFull {
+			log.Warn(wrapChallengeToBattleError(err))
+		} else {
+			log.Error(wrapChallengeToBattleError(err))
+		}
 		return
 	}
 
