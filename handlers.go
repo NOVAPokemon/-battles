@@ -108,10 +108,10 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 
 	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
 	if err != nil {
-		// TODO Should refactor default messages and not build every time
-		log.Error()
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("No auth token"))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
@@ -121,10 +121,10 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient,
 		authToken.Username, r)
 	if err != nil {
-		log.Error(err)
-		// TODO use proper messages with constructors
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
@@ -191,9 +191,10 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
 	if err != nil {
-		// TODO Should refactor default messages and not build every time
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("No auth token"))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
@@ -202,9 +203,11 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		authToken.Username, r)
 	if err != nil {
 		log.Error(wrapChallengeToBattleError(err))
-		// TODO use proper messages with constructors
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
+
 		return
 	}
 
@@ -273,23 +276,24 @@ func handleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
-
 	if err != nil {
-		// TODO Should refactor default messages and not build every time
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("No auth token"))
-		_ = conn.Close()
+		log.Error(wrapAcceptChallengeError(err))
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
 	trainersClient := clients.NewTrainersClient(httpClient)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient,
 		authToken.Username, r)
-
 	if err != nil {
 		log.Error(wrapAcceptChallengeError(err))
-		// TODO use proper messages with constructors
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
@@ -297,39 +301,46 @@ func handleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pokemonsForBattle {
 		log.Infof("%s\t:\t%s", p.Id.Hex(), p.Species)
 	}
-	// TODO error not verified?
-	lobbyId, err := primitive.ObjectIDFromHex(mux.Vars(r)[api.BattleIdPathVar])
 
+	lobbyId, err := primitive.ObjectIDFromHex(mux.Vars(r)[api.BattleIdPathVar])
 	if err != nil {
 		log.Error(wrapAcceptChallengeError(err))
-		// TODO use proper messages with constructors
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
+		return
 	}
 
 	value, ok := hub.AwaitingLobbies.Load(lobbyId)
 	if !ok {
 		log.Warn(wrapAcceptChallengeError(errorBattleDoesNotExist))
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(errorBattleDoesNotExist.Error()))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, errorBattleDoesNotExist)
+		if err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
 	battle := value.(valueType)
 	if battle.Expected[1] != authToken.Username {
 		log.Error(wrapAcceptChallengeError(err))
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(errorPlayerUnauthorized.Error()))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, errorPlayerUnauthorized)
+		if err != nil {
+			log.Error(err)
+		}
 		return
 	}
 
 	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
 	playerNr, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn,
 		r.Header.Get(tokens.AuthTokenHeaderName))
-
 	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
-		_ = conn.Close()
+		err = writeErrorMessageAndClose(conn, err)
+		if err != nil {
+			log.Error(err)
+		}
+		return
 	}
 
 	if playerNr == 2 {
@@ -653,4 +664,22 @@ func loadConfig() *battleServerConfig {
 
 	log.Infof("Loaded config: %+v", configAux)
 	return &configAux
+}
+
+func writeErrorMessageAndClose(conn *websocket.Conn, err error) error {
+	data := []byte(ws.ErrorMessage{
+		Info:  err.Error(),
+		Fatal: false,
+	}.SerializeToWSMessage().Serialize())
+	err = conn.WriteMessage(websocket.TextMessage, data)
+	if err != nil {
+		return ws.WrapWritingMessageError(err)
+	}
+
+	err = conn.Close()
+	if err != nil {
+		return ws.WrapClosingConnectionError(err)
+	}
+
+	return nil
 }
