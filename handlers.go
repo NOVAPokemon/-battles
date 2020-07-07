@@ -353,14 +353,14 @@ func handleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 
 	lobbyId, err := primitive.ObjectIDFromHex(lobbyIdHex)
 	if err != nil {
-		utils.LogAndSendHTTPError(&w, errorBattleDoesNotExist, http.StatusInternalServerError)
+		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusInternalServerError)
 		return
 	}
 
 	var battleInterface interface{}
 	battleInterface, ok = hub.AwaitingLobbies.Load(lobbyId)
 	if !ok {
-		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusNotFound)
+		utils.LogWarnAndSendHTTPError(&w, wrapRejectChallengeError(errorBattleDoesNotExist), http.StatusNotFound)
 		return
 
 	}
