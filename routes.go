@@ -8,46 +8,46 @@ import (
 )
 
 const (
-	GetLobbiesName        = "GET_LOBBIES"
-	QueueForBattleName    = "QUEUE_FOR_BATTLE"
-	ChallengeToBattleName = "CHALLENGE_FOR_BATTLE"
-	AcceptChallengeName   = "ACCEPT_BATTLE"
-	RejectChallengeName   = "REJECT_BATTLE"
+	getLobbiesName        = "GET_LOBBIES"
+	queueForBattleName    = "QUEUE_FOR_BATTLE"
+	challengeToBattleName = "CHALLENGE_FOR_BATTLE"
+	acceptChallengeName   = "ACCEPT_BATTLE"
+	rejectChallengeName   = "REJECT_BATTLE"
 )
 
-const GET = "GET"
-const POST = "POST"
+const get = "GET"
+const post = "POST"
 
 var routes = utils.Routes{
 	api.GenStatusRoute(strings.ToLower(serviceName)),
 	utils.Route{
-		Name:        GetLobbiesName,
-		Method:      GET,
+		Name:        getLobbiesName,
+		Method:      get,
 		Pattern:     api.GetBattlesPath,
-		HandlerFunc: HandleGetCurrentLobbies,
+		HandlerFunc: handleGetCurrentLobbies,
 	},
 	utils.Route{
-		Name:        ChallengeToBattleName,
-		Method:      GET,
+		Name:        challengeToBattleName,
+		Method:      get,
 		Pattern:     api.ChallengeToBattleRoute,
-		HandlerFunc: HandleChallengeToBattle,
+		HandlerFunc: handleChallengeToBattle,
 	},
 	utils.Route{
-		Name:        AcceptChallengeName,
-		Method:      GET,
+		Name:        acceptChallengeName,
+		Method:      get,
 		Pattern:     api.AcceptChallengeRoute,
-		HandlerFunc: HandleAcceptChallenge,
+		HandlerFunc: handleAcceptChallenge,
 	},
 	utils.Route{
-		Name:        QueueForBattleName,
-		Method:      GET,
+		Name:        queueForBattleName,
+		Method:      get,
 		Pattern:     api.QueueForBattlePath,
-		HandlerFunc: HandleQueueForBattle,
+		HandlerFunc: handleQueueForBattle,
 	},
 	utils.Route{
-		Name:        RejectChallengeName,
-		Method:      POST,
+		Name:        rejectChallengeName,
+		Method:      post,
 		Pattern:     api.RejectChallengeRoute,
-		HandlerFunc: HandleRejectChallenge,
+		HandlerFunc: handleRejectChallenge,
 	},
 }

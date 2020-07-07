@@ -28,23 +28,23 @@ var (
 
 // Handlers
 func wrapGetLobbiesError(err error) error {
-	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, GetLobbiesName))
+	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, getLobbiesName))
 }
 
 func wrapQueueBattleError(err error) error {
-	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, QueueForBattleName))
+	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, queueForBattleName))
 }
 
 func wrapChallengeToBattleError(err error) error {
-	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, ChallengeToBattleName))
+	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, challengeToBattleName))
 }
 
 func wrapAcceptChallengeError(err error) error {
-	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, AcceptChallengeName))
+	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, acceptChallengeName))
 }
 
 func wrapRejectChallengeError(err error) error {
-	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, RejectChallengeName))
+	return errors.Wrap(err, fmt.Sprintf(utils.ErrorInHandlerFormat, rejectChallengeName))
 }
 
 // Other Functions
