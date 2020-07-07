@@ -142,7 +142,7 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		battleAux = value.(valueType)
 		playerNr, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
 		if err != nil {
-			if errors.Cause(err) == ws.ErrorLobbyIsFull {
+			if errors.Cause(err) == ws.ErrorLobbyAlreadyFinished {
 				log.Warn(err)
 			} else {
 				log.Error(err)
@@ -167,7 +167,7 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	battleAux = createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, ""})
 	_, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
 	if err != nil {
-		if errors.Cause(err) == ws.ErrorLobbyIsFull {
+		if errors.Cause(err) == ws.ErrorLobbyAlreadyFinished {
 			log.Warn(err)
 		} else {
 			log.Error(err)
@@ -220,7 +220,7 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Created lobby: %s", battle.Id.Hex())
 	newBattle := createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
 	if _, err = newBattle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName)); err != nil {
-		if errors.Cause(err) == ws.ErrorLobbyIsFull {
+		if errors.Cause(err) == ws.ErrorLobbyAlreadyFinished {
 			log.Warn(wrapChallengeToBattleError(err))
 		} else {
 			log.Error(wrapChallengeToBattleError(err))
