@@ -307,7 +307,8 @@ func HandleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infof("Trainer %s joined ws %s", authToken.Username, mux.Vars(r)[api.BattleIdPathVar])
-	playerNr, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
+	playerNr, err := battle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn,
+		r.Header.Get(tokens.AuthTokenHeaderName))
 
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
