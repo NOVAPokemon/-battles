@@ -140,9 +140,10 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	)
 	hub.QueuedBattles.Range(func(key, value interface{}) bool {
 		battleAux = value.(valueType)
-		playerNr, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn, r.Header.Get(tokens.AuthTokenHeaderName))
+		playerNr, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems,
+			conn, r.Header.Get(tokens.AuthTokenHeaderName))
 		if err != nil {
-			if errors.Cause(err) == ws.ErrorLobbyAlreadyFinished {
+			if errors.Cause(err) == ws.ErrorLobbyAlreadyFinished || errors.Cause(err) == ws.ErrorLobbyIsFull {
 				log.Warn(err)
 			} else {
 				log.Error(err)
