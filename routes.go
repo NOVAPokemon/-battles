@@ -15,8 +15,10 @@ const (
 	rejectChallengeName   = "REJECT_BATTLE"
 )
 
-const get = "GET"
-const post = "POST"
+const (
+	get  = "GET"
+	post = "POST"
+)
 
 var routes = utils.Routes{
 	api.GenStatusRoute(strings.ToLower(serviceName)),
