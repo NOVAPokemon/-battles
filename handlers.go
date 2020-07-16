@@ -46,7 +46,7 @@ var (
 	config              *battleServerConfig
 	serverName          string
 	serviceNameHeadless string
-	commsManager        utils.CommunicationManager
+	commsManager        ws.CommunicationManager
 )
 
 func init() {

@@ -42,7 +42,7 @@ func createBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *battleLobb
 
 func (b *battleLobby) addPlayer(username string, pokemons map[string]*pokemons.Pokemon, stats *utils.TrainerStats,
 	trainerItems map[string]items.Item, trainerConn *websocket.Conn, authToken string,
-	commsManager utils.CommunicationManager) (int,
+	commsManager ws.CommunicationManager) (int,
 	error) {
 
 	trainersJoined, err := ws.AddTrainer(b.Lobby, username, trainerConn, commsManager)
