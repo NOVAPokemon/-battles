@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/NOVAPokemon/utils"
-	"github.com/NOVAPokemon/utils/comms_manager"
 	"github.com/NOVAPokemon/utils/items"
 	"github.com/NOVAPokemon/utils/pokemons"
 	ws "github.com/NOVAPokemon/utils/websockets"
@@ -43,7 +42,7 @@ func createBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *battleLobb
 
 func (b *battleLobby) addPlayer(username string, pokemons map[string]*pokemons.Pokemon, stats *utils.TrainerStats,
 	trainerItems map[string]items.Item, trainerConn *websocket.Conn, authToken string,
-	commsManager comms_manager.CommunicationManager) (int,
+	commsManager utils.CommunicationManager) (int,
 	error) {
 
 	trainersJoined, err := ws.AddTrainer(b.Lobby, username, trainerConn, commsManager)

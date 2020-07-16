@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NOVAPokemon/utils/comms_manager"
 	"github.com/NOVAPokemon/utils/notifications"
 	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"github.com/pkg/errors"
@@ -47,7 +46,7 @@ var (
 	config              *battleServerConfig
 	serverName          string
 	serviceNameHeadless string
-	commsManager        comms_manager.CommunicationManager
+	commsManager        utils.CommunicationManager
 )
 
 func init() {
