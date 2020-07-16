@@ -20,8 +20,6 @@ var upgrader = websocket.Upgrader{
 }
 
 func main() {
-	recordMetrics()
-
 	flags := utils.ParseFlags(serverName)
 
 	if !*flags.LogToStdout {
@@ -41,6 +39,8 @@ func main() {
 		QueuedBattles:      sync.Map{},
 		ongoingBattles:     sync.Map{},
 	}
+
+	recordMetrics()
 
 	utils.StartServer(serviceName, host, port, routes, commsManager)
 }
