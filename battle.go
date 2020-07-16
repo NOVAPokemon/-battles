@@ -284,8 +284,8 @@ func (b *battleLobby) handlePlayerMessage(msgStr string, issuer, otherPlayer *ba
 	default:
 		log.Error(ws.NewInvalidMsgTypeError(message.MsgType))
 		issuerChan <- ws.ErrorMessage{
-				Info:  ws.ErrorInvalidMessageType.Error(),
-				Fatal: false,
+			Info:  ws.ErrorInvalidMessageType.Error(),
+			Fatal: false,
 		}
 	}
 	return false

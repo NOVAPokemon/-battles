@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	errorMainLoop  = "error in battle main loop"
+	errorMainLoop = "error in battle main loop"
 
 	errorCommitResultsFormat = "error commmiting results for battle %s"
 	errorStartBattleFormat   = "error starting battle %s"
