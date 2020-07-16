@@ -1,7 +1,10 @@
 package main
 
 import (
+	"sync"
+
 	"github.com/NOVAPokemon/utils"
+	"github.com/NOVAPokemon/utils/clients"
 	"github.com/gorilla/websocket"
 )
 
@@ -18,6 +21,26 @@ var upgrader = websocket.Upgrader{
 
 func main() {
 	recordMetrics()
-	utils.CheckLogFlag(serviceName)
-	utils.StartServer(serviceName, host, port, routes)
+
+	flags := utils.ParseFlags(serverName)
+
+	if !*flags.LogToStdout {
+		utils.SetLogFile(serverName)
+	}
+
+	if utils.CheckDelayedFlag(*flags.DelayedComms) {
+		commsManager = utils.CreateDefaultCommunicationManager()
+	} else {
+		locationTag := utils.GetLocationTag(utils.DefaultLocationTagsFilename, serverName)
+		commsManager = utils.CreateDelayedCommunicationManager(utils.DefaultDelayConfigFilename, locationTag)
+	}
+
+	hub = &battleHub{
+		notificationClient: clients.NewNotificationClient(nil, commsManager),
+		AwaitingLobbies:    sync.Map{},
+		QueuedBattles:      sync.Map{},
+		ongoingBattles:     sync.Map{},
+	}
+
+	utils.StartServer(serviceName, host, port, routes, commsManager)
 }
