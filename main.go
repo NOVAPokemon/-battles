@@ -26,7 +26,7 @@ func main() {
 		utils.SetLogFile(serverName)
 	}
 
-	if *flags.DelayedComms {
+	if !*flags.DelayedComms {
 		commsManager = utils.CreateDefaultCommunicationManager()
 	} else {
 		locationTag := utils.GetLocationTag(utils.DefaultLocationTagsFilename, serverName)
