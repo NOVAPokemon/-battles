@@ -30,7 +30,8 @@ func main() {
 		commsManager = utils.CreateDefaultCommunicationManager()
 	} else {
 		locationTag := utils.GetLocationTag(utils.DefaultLocationTagsFilename, serverName)
-		commsManager = utils.CreateDelayedCommunicationManager(utils.DefaultDelayConfigFilename, locationTag)
+		commsManager = utils.CreateDelayedCommunicationManager(utils.DefaultDelayConfigFilename,
+			locationTag, false)
 	}
 
 	hub = &battleHub{
