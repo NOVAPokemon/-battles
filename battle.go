@@ -226,36 +226,36 @@ func (b *battleLobby) handlePlayerMessage(wsMsg *ws.WebsocketMsg, issuer, otherP
 				return true
 			}
 
-			battles.UpdateTrainerPokemon(&trackInfo, *otherPlayer.SelectedPokemon, otherPlayerChan, true)
-			battles.UpdateTrainerPokemon(&trackInfo, *otherPlayer.SelectedPokemon, issuerChan, false)
+			battles.UpdateTrainerPokemon(trackInfo, *otherPlayer.SelectedPokemon, otherPlayerChan, true)
+			battles.UpdateTrainerPokemon(trackInfo, *otherPlayer.SelectedPokemon, issuerChan, false)
 		} else {
 			// if not changed, other player defended
 
 			issuerChan <- battles.StatusMessage{
 				Message: battles.StatusEnemyDefended,
-			}.ConvertToWSMessage(trackInfo)
+			}.ConvertToWSMessage(*trackInfo)
 
 			otherPlayerChan <- battles.StatusMessage{
 				Message: battles.StatusDefended,
-			}.ConvertToWSMessage(trackInfo)
+			}.ConvertToWSMessage(*trackInfo)
 		}
 	case battles.Defend:
 		battles.HandleDefendMove(trackInfo, issuer, issuerChan, b.cooldown)
 		otherPlayerChan <- battles.StatusMessage{
 			Message: "Enemy is defending",
-		}.ConvertToWSMessage(trackInfo)
+		}.ConvertToWSMessage(*trackInfo)
 	case battles.UseItem:
 		useItemMsg := msgData.(battles.UseItemMessage)
 		if changed := battles.HandleUseItem(trackInfo, &useItemMsg, issuer, issuerChan,
 			b.cooldown); changed {
-			battles.UpdateTrainerPokemon(&trackInfo, *issuer.SelectedPokemon, otherPlayerChan, false)
+			battles.UpdateTrainerPokemon(trackInfo, *issuer.SelectedPokemon, otherPlayerChan, false)
 		}
 	case battles.SelectPokemon:
 		selectPokemonMsg := msgData.(battles.SelectPokemonMessage)
 		changed := battles.HandleSelectPokemon(trackInfo, &selectPokemonMsg, issuer,
 			issuerChan)
 		if changed {
-			battles.UpdateTrainerPokemon(&trackInfo, *issuer.SelectedPokemon, otherPlayerChan, false)
+			battles.UpdateTrainerPokemon(trackInfo, *issuer.SelectedPokemon, otherPlayerChan, false)
 		}
 	default:
 		log.Error(ws.NewInvalidMsgTypeError(wsMsg.Content.AppMsgType))
