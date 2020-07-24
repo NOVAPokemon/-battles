@@ -110,6 +110,8 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trackInfo := ws.GetTrackInfoFromHeader(&r.Header)
+
 	trainersClient := clients.NewTrainersClient(httpClient, commsManager)
 
 	log.Infof("New player queued for battle: %s", authToken.Username)
@@ -173,18 +175,14 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 		errMsg := ws.ErrorMessage{
 			Info:  err.Error(),
 			Fatal: true,
-		}.SerializeToWSMessage().Serialize()
+		}.ConvertToWSMessage()
 
-		serializedMsg := ws.GenericMsg{
-			MsgType: websocket.TextMessage,
-			Data:    []byte(errMsg),
-		}
-		_ = commsManager.WriteGenericMessageToConn(conn, serializedMsg)
+		_ = commsManager.WriteGenericMessageToConn(conn, errMsg)
 		_ = conn.Close()
 		return
 	}
 	hub.QueuedBattles.Store(lobbyId, battleAux)
-	go cleanBattle(battleAux, &hub.QueuedBattles)
+	go cleanBattle(trackInfo, battleAux, &hub.QueuedBattles)
 }
 
 func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +201,8 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	trackInfo := ws.GetTrackInfoFromHeader(&r.Header)
 
 	trainersClient := clients.NewTrainersClient(httpClient, commsManager)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient,
@@ -241,7 +241,7 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hub.AwaitingLobbies.Store(lobbyId, newBattle)
-	go cleanBattle(newBattle, &hub.AwaitingLobbies)
+	go cleanBattle(trackInfo, newBattle, &hub.AwaitingLobbies)
 
 	toMarshal := notifications.WantsToBattleContent{Username: challengedPlayer,
 		LobbyId:        lobbyId.Hex(),
@@ -260,9 +260,9 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		Content:  contentBytes,
 	}
 
-	notificationMsg := notificationsMessages.NewNotificationMessage(notification)
-	notificationMsg.Emit(ws.MakeTimestamp())
-	notificationMsg.LogEmit(notificationsMessages.Notification)
+	notificationMsg := notificationsMessages.NotificationMessage{
+		Notification: notification,
+	}
 
 	log.Infof("Sending notification: Id:%s Content:%s to %s", notification.Id.Hex(),
 		string(notification.Content), notification.Username)
@@ -541,7 +541,7 @@ func commitBattleResults(trainersClient *clients.TrainersClient, battleId string
 }
 
 func removeUsedItems(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus, authToken string,
-	outChan chan ws.GenericMsg) error {
+	outChan chan *ws.WebsocketMsg) error {
 
 	usedItems := player.UsedItems
 	if len(usedItems) == 0 {
@@ -564,16 +564,13 @@ func removeUsedItems(trainersClient *clients.TrainersClient, player battles.Trai
 		TokensString: []string{trainersClient.ItemsToken},
 	}
 
-	outChan <- ws.GenericMsg{
-		MsgType: websocket.TextMessage,
-		Data:    []byte(setTokensMessage.SerializeToWSMessage().Serialize()),
-	}
+	outChan <- setTokensMessage.ConvertToWSMessage()
 
 	return nil
 }
 
 func updateTrainerPokemons(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus,
-	authToken string, outChan chan ws.GenericMsg, xpAmount float64) error {
+	authToken string, outChan chan *ws.WebsocketMsg, xpAmount float64) error {
 
 	// updates pokemon status after battle: adds XP and updates HP
 	// player 0
@@ -600,14 +597,11 @@ func updateTrainerPokemons(trainersClient *clients.TrainersClient, player battle
 		TokensString: toSend,
 	}
 
-	outChan <- ws.GenericMsg{
-		MsgType: websocket.TextMessage,
-		Data:    []byte(setTokensMessage.SerializeToWSMessage().Serialize()),
-	}
+	outChan <- setTokensMessage.ConvertToWSMessage()
 	return nil
 }
 
-func cleanBattle(battle *battleLobby, containingMap *sync.Map) {
+func cleanBattle(info ws.TrackedInfo, battle *battleLobby, containingMap *sync.Map) {
 	timer := time.NewTimer(time.Duration(config.BattleStartTimeout) * time.Second)
 	defer timer.Stop()
 	defer containingMap.Delete(battle.Lobby.Id)
@@ -621,10 +615,7 @@ func cleanBattle(battle *battleLobby, containingMap *sync.Map) {
 			case <-battle.Lobby.DoneListeningFromConn[0]:
 			default:
 				select {
-				case battle.Lobby.TrainerOutChannels[0] <- ws.GenericMsg{
-					MsgType: websocket.TextMessage,
-					Data:    []byte(ws.RejectMessage{}.SerializeToWSMessage().Serialize()),
-				}:
+				case battle.Lobby.TrainerOutChannels[0] <- ws.RejectMessage{}.ConvertToWSMessage(info):
 				default:
 				}
 			}
@@ -635,7 +626,7 @@ func cleanBattle(battle *battleLobby, containingMap *sync.Map) {
 }
 
 func addExperienceToPlayer(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus,
-	authToken string, outChan chan ws.GenericMsg, XPAmount float64) error {
+	authToken string, outChan chan *ws.WebsocketMsg, XPAmount float64) error {
 
 	stats := player.TrainerStats
 	stats.XP += XPAmount
@@ -650,10 +641,7 @@ func addExperienceToPlayer(trainersClient *clients.TrainersClient, player battle
 		TokensString: []string{trainersClient.TrainerStatsToken},
 	}
 
-	outChan <- ws.GenericMsg{
-		MsgType: websocket.TextMessage,
-		Data:    []byte(setTokensMessage.SerializeToWSMessage().Serialize()),
-	}
+	outChan <- setTokensMessage.ConvertToWSMessage()
 
 	return nil
 }
@@ -680,13 +668,9 @@ func writeErrorMessageAndClose(conn *websocket.Conn, msgErr error) error {
 	errMsg := ws.ErrorMessage{
 		Info:  msgErr.Error(),
 		Fatal: false,
-	}.SerializeToWSMessage().Serialize()
-
-	serializedMsg := ws.GenericMsg{
-		MsgType: websocket.TextMessage,
-		Data:    []byte(errMsg),
 	}
-	err := commsManager.WriteGenericMessageToConn(conn, serializedMsg)
+
+	err := commsManager.WriteGenericMessageToConn(conn, errMsg.ConvertToWSMessage())
 	if err != nil {
 		return ws.WrapWritingMessageError(err)
 	}
