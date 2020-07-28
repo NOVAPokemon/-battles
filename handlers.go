@@ -254,17 +254,17 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	notification := utils.Notification{
-		Id:       primitive.NewObjectID(),
+		Id:       primitive.NewObjectID().Hex(),
 		Username: challengedPlayer,
 		Type:     notifications.ChallengeToBattle,
-		Content:  contentBytes,
+		Content:  string(contentBytes),
 	}
 
 	notificationMsg := notificationsMessages.NotificationMessage{
 		Notification: notification,
 	}
 
-	log.Infof("Sending notification: Id:%s Content:%s to %s", notification.Id.Hex(),
+	log.Infof("Sending notification: Id:%s Content:%s to %s", notification.Id,
 		string(notification.Content), notification.Username)
 	err = hub.notificationClient.AddNotification(&notificationMsg, r.Header.Get(tokens.AuthTokenHeaderName))
 
