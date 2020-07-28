@@ -83,9 +83,9 @@ func (b *battleLobby) startBattle() (string, error) {
 
 func (b *battleLobby) setupLoop() error {
 	players := b.PlayersBattleStatus
-	startMsg := ws.StartMessage{}
+	startMsg := battles.StartBattleMessage{}
 
-	wsStartMsg := startMsg.ConvertToWSMessage()
+	wsStartMsg := startMsg.ConvertToWSMessage(*b.Lobby.StartTrackInfo)
 
 	b.Lobby.TrainerOutChannels[0] <- wsStartMsg
 
