@@ -219,12 +219,12 @@ func (b *battleLobby) handlePlayerMessage(wsMsg *ws.WebsocketMsg, issuer, otherP
 				log.Infof("Winner : %s", issuer.Username)
 				log.Infof("Trainer 0 (%s) pokemons:", issuer.Username)
 				for _, v := range b.PlayersBattleStatus[0].TrainerPokemons {
-					log.Infof("Pokemon %s:\t HP:%d", v.Id.Hex(), v.HP)
+					log.Infof("Pokemon %s:\t HP:%d", v.Id, v.HP)
 				}
 
 				log.Infof("Trainer 1 (%s) pokemons:", issuer.Username)
 				for _, v := range b.PlayersBattleStatus[1].TrainerPokemons {
-					log.Infof("Pokemon %s:\t HP:%d", v.Id.Hex(), v.HP)
+					log.Infof("Pokemon %s:\t HP:%d", v.Id, v.HP)
 				}
 				b.Winner = issuer.Username
 				return true
@@ -304,12 +304,12 @@ func (b *battleLobby) logBattleStatus() {
 	pokemon := b.PlayersBattleStatus[0].SelectedPokemon
 	log.Infof("Player 0 status: Defending:%t ; Cooldown:%t ", b.PlayersBattleStatus[0].Defending, b.PlayersBattleStatus[0].Cooldown)
 	if pokemon != nil {
-		log.Infof("Player 0 pokemon:ID:%s, Damage:%d, HP:%d, maxHP:%d, Species:%s", pokemon.Id.Hex(), pokemon.Damage, pokemon.HP, pokemon.MaxHP, pokemon.Species)
+		log.Infof("Player 0 pokemon:ID:%s, Damage:%d, HP:%d, maxHP:%d, Species:%s", pokemon.Id, pokemon.Damage, pokemon.HP, pokemon.MaxHP, pokemon.Species)
 	}
 
 	pokemon = b.PlayersBattleStatus[1].SelectedPokemon
 	log.Infof("Player 1 status: Defending:%t ; Cooldown:%t ", b.PlayersBattleStatus[1].Defending, b.PlayersBattleStatus[1].Cooldown)
 	if pokemon != nil {
-		log.Infof("Player 1 pokemon:ID:%s, Damage:%d, HP:%d, maxHP:%d, Species:%s", pokemon.Id.Hex(), pokemon.Damage, pokemon.HP, pokemon.MaxHP, pokemon.Species)
+		log.Infof("Player 1 pokemon:ID:%s, Damage:%d, HP:%d, maxHP:%d, Species:%s", pokemon.Id, pokemon.Damage, pokemon.HP, pokemon.MaxHP, pokemon.Species)
 	}
 }
