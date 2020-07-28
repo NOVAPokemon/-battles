@@ -615,7 +615,7 @@ func cleanBattle(info ws.TrackedInfo, battle *battleLobby, containingMap *sync.M
 			case <-battle.Lobby.DoneListeningFromConn[0]:
 			default:
 				select {
-				case battle.Lobby.TrainerOutChannels[0] <- ws.RejectMessage{}.ConvertToWSMessage(info):
+				case battle.Lobby.TrainerOutChannels[0] <- battles.RejectBattleMessage{}.ConvertToWSMessage(info):
 				default:
 				}
 			}

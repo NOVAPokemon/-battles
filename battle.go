@@ -173,11 +173,11 @@ func (b *battleLobby) handleMoveInSelectionPhase(wsMsg *ws.WebsocketMsg, issuer 
 	issuerChan chan *ws.WebsocketMsg) {
 
 	if wsMsg.Content.AppMsgType != battles.SelectPokemon {
-		errMsg := ws.ErrorMessage{
+		errMsg := battles.ErrorBattleMessage{
 			Info:  battles.ErrorPokemonSelectionPhase.Error(),
 			Fatal: false,
 		}
-		issuerChan <- errMsg.ConvertToWSMessageWithInfo(wsMsg.Content.RequestTrack)
+		issuerChan <- errMsg.ConvertToWSMessage(*wsMsg.Content.RequestTrack)
 		return
 	}
 
@@ -269,10 +269,10 @@ func (b *battleLobby) handlePlayerMessage(wsMsg *ws.WebsocketMsg, issuer, otherP
 		}
 	default:
 		log.Error(ws.NewInvalidMsgTypeError(wsMsg.Content.AppMsgType))
-		issuerChan <- ws.ErrorMessage{
+		issuerChan <- battles.ErrorBattleMessage{
 			Info:  ws.ErrorInvalidMessageType.Error(),
 			Fatal: false,
-		}.ConvertToWSMessageWithInfo(trackInfo)
+		}.ConvertToWSMessage(*trackInfo)
 	}
 	return false
 }
