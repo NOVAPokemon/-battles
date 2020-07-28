@@ -71,12 +71,12 @@ func (b *battleLobby) startBattle() (string, error) {
 	ws.StartLobby(b.Lobby)
 	err := b.setupLoop()
 	if err != nil {
-		return "", wrapStartBattleError(err, b.Lobby.Id.Hex())
+		return "", wrapStartBattleError(err, b.Lobby.Id)
 	}
 
 	winner, err := b.mainLoop()
 	if err != nil {
-		return "", wrapStartBattleError(err, b.Lobby.Id.Hex())
+		return "", wrapStartBattleError(err, b.Lobby.Id)
 	}
 	return winner, nil
 }

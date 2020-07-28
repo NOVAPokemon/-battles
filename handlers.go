@@ -28,7 +28,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-type keyType = primitive.ObjectID
+type keyType = string
 type valueType = *battleLobby
 
 type battleHub struct {
@@ -161,7 +161,7 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lobbyId := primitive.NewObjectID()
-	battle := ws.NewLobby(lobbyId, 2)
+	battle := ws.NewLobby(lobbyId.Hex(), 2)
 	battleAux = createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, ""})
 	_, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn,
 		r.Header.Get(tokens.AuthTokenHeaderName), commsManager)
@@ -226,8 +226,8 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Player %s challenged %s for a battle", authToken.Username, challengedPlayer)
 
 	lobbyId := primitive.NewObjectID()
-	battle := ws.NewLobby(lobbyId, 2)
-	log.Infof("Created lobby: %s", battle.Id.Hex())
+	battle := ws.NewLobby(lobbyId.Hex(), 2)
+	log.Infof("Created lobby: %s", battle.Id)
 	newBattle := createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
 	_, err = newBattle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn,
 		r.Header.Get(tokens.AuthTokenHeaderName), commsManager)
@@ -352,7 +352,7 @@ func handleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if playerNr == 2 {
-		startBattle(trainersClient, lobbyId, battle)
+		startBattle(trainersClient, lobbyId.Hex(), battle)
 		hub.AwaitingLobbies.Delete(lobbyId)
 	}
 }
@@ -397,8 +397,8 @@ func handleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 	utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(errorPlayerUnauthorized), http.StatusUnauthorized)
 }
 
-func startBattle(trainersClient *clients.TrainersClient, battleId primitive.ObjectID, battle *battleLobby) {
-	log.Infof("Battle %s starting...", battleId.Hex())
+func startBattle(trainersClient *clients.TrainersClient, battleId string, battle *battleLobby) {
+	log.Infof("Battle %s starting...", battleId)
 	hub.ongoingBattles.Store(battleId, battle)
 	emitStartBattle()
 	winner, err := battle.startBattle()
@@ -407,7 +407,7 @@ func startBattle(trainersClient *clients.TrainersClient, battleId primitive.Obje
 		ws.FinishLobby(battle.Lobby) // abort lobby without commiting
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
-		err = commitBattleResults(trainersClient, battleId.Hex(), battle)
+		err = commitBattleResults(trainersClient, battleId, battle)
 		if err != nil {
 			log.Error(err)
 		}
@@ -435,7 +435,7 @@ func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, use
 	}
 
 	pokemonsInToken := make(map[string]*pokemons.Pokemon, len(pokemonTkns))
-	pokemonHashes := make(map[string][]byte, len(pokemonTkns))
+	pokemonHashes := make(map[string]string, len(pokemonTkns))
 	for _, pokemonTkn := range pokemonTkns {
 		pokemonId := pokemonTkn.Pokemon.Id.Hex()
 		pokemonsInToken[pokemonId] = &pokemonTkn.Pokemon
@@ -607,7 +607,7 @@ func cleanBattle(info ws.TrackedInfo, battle *battleLobby, containingMap *sync.M
 	defer containingMap.Delete(battle.Lobby.Id)
 	select {
 	case <-timer.C:
-		log.Warnf("closing lobby %s since time expired", battle.Lobby.Id.Hex())
+		log.Warnf("closing lobby %s since time expired", battle.Lobby.Id)
 		ws.FinishLobby(battle.Lobby)
 	case <-battle.RejectChannel:
 		if ws.GetTrainersJoined(battle.Lobby) > 0 {
