@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/mitchellh/mapstructure"
 	"sync"
 	"time"
 
@@ -176,13 +177,16 @@ func (b *battleLobby) handleMoveInSelectionPhase(wsMsg *ws.WebsocketMsg, issuer 
 			Info:  battles.ErrorPokemonSelectionPhase.Error(),
 			Fatal: false,
 		}
-
 		issuerChan <- errMsg.ConvertToWSMessageWithInfo(wsMsg.Content.RequestTrack)
 		return
 	}
 
-	selectPokemonMsg := wsMsg.Content.Data.(battles.SelectPokemonMessage)
-	battles.HandleSelectPokemon(wsMsg.Content.RequestTrack, &selectPokemonMsg, issuer, issuerChan)
+	selectPokemonMsg := &battles.SelectPokemonMessage{}
+	if err := mapstructure.Decode(wsMsg.Content.Data, selectPokemonMsg); err != nil {
+		panic(err)
+	}
+
+	battles.HandleSelectPokemon(wsMsg.Content.RequestTrack, selectPokemonMsg, issuer, issuerChan)
 }
 
 // handles the reception of a move from a player.
@@ -245,14 +249,20 @@ func (b *battleLobby) handlePlayerMessage(wsMsg *ws.WebsocketMsg, issuer, otherP
 			Message: "Enemy is defending",
 		}.ConvertToWSMessage(*trackInfo)
 	case battles.UseItem:
-		useItemMsg := msgData.(battles.UseItemMessage)
-		if changed := battles.HandleUseItem(trackInfo, &useItemMsg, issuer, issuerChan,
+		useItemMsg := &battles.UseItemMessage{}
+		if err := mapstructure.Decode(msgData, useItemMsg); err != nil {
+			panic(err)
+		}
+		if changed := battles.HandleUseItem(trackInfo, useItemMsg, issuer, issuerChan,
 			b.cooldown); changed {
 			battles.UpdateTrainerPokemon(trackInfo, *issuer.SelectedPokemon, otherPlayerChan, false)
 		}
 	case battles.SelectPokemon:
-		selectPokemonMsg := msgData.(battles.SelectPokemonMessage)
-		changed := battles.HandleSelectPokemon(trackInfo, &selectPokemonMsg, issuer,
+		selectPokemonMsg := &battles.SelectPokemonMessage{}
+		if err := mapstructure.Decode(msgData, selectPokemonMsg); err != nil {
+			panic(err)
+		}
+		changed := battles.HandleSelectPokemon(trackInfo, selectPokemonMsg, issuer,
 			issuerChan)
 		if changed {
 			battles.UpdateTrainerPokemon(trackInfo, *issuer.SelectedPokemon, otherPlayerChan, false)
