@@ -161,7 +161,7 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lobbyId := primitive.NewObjectID()
-	battle := ws.NewLobby(lobbyId.Hex(), 2)
+	battle := ws.NewLobby(lobbyId.Hex(), 2, &trackInfo)
 	battleAux = createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, ""})
 	_, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn,
 		r.Header.Get(tokens.AuthTokenHeaderName), commsManager)
@@ -226,7 +226,7 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	log.Infof("Player %s challenged %s for a battle", authToken.Username, challengedPlayer)
 
 	lobbyId := primitive.NewObjectID()
-	battle := ws.NewLobby(lobbyId.Hex(), 2)
+	battle := ws.NewLobby(lobbyId.Hex(), 2, &trackInfo)
 	log.Infof("Created lobby: %s", battle.Id)
 	newBattle := createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, challengedPlayer})
 	_, err = newBattle.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn,
