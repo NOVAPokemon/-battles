@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	originalHttp "net/http"
 	"os"
 	"sync"
 	"time"
@@ -67,7 +66,7 @@ func init() {
 	config = loadConfig()
 }
 
-func handleGetCurrentLobbies(w originalHttp.ResponseWriter, _ *originalHttp.Request) {
+func handleGetCurrentLobbies(w http.ResponseWriter, _ *http.Request) {
 	var availableLobbies []utils.Lobby
 	hub.QueuedBattles.Range(func(key, value interface{}) bool {
 		toAdd := utils.Lobby{
@@ -95,7 +94,7 @@ func handleGetCurrentLobbies(w originalHttp.ResponseWriter, _ *originalHttp.Requ
 	}
 }
 
-func handleQueueForBattle(w originalHttp.ResponseWriter, r *originalHttp.Request) {
+func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		err = wrapQueueBattleError(ws.WrapUpgradeConnectionError(err))
@@ -187,7 +186,7 @@ func handleQueueForBattle(w originalHttp.ResponseWriter, r *originalHttp.Request
 	go cleanBattle(trackInfo, battleAux, &hub.QueuedBattles)
 }
 
-func handleChallengeToBattle(w originalHttp.ResponseWriter, r *originalHttp.Request) {
+func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		err = wrapChallengeToBattleError(ws.WrapUpgradeConnectionError(err))
@@ -277,7 +276,7 @@ func handleChallengeToBattle(w originalHttp.ResponseWriter, r *originalHttp.Requ
 	}
 }
 
-func handleAcceptChallenge(w originalHttp.ResponseWriter, r *originalHttp.Request) {
+func handleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		err = wrapAcceptChallengeError(ws.WrapUpgradeConnectionError(err))
@@ -359,7 +358,7 @@ func handleAcceptChallenge(w originalHttp.ResponseWriter, r *originalHttp.Reques
 	}
 }
 
-func handleRejectChallenge(w originalHttp.ResponseWriter, r *originalHttp.Request) {
+func handleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 	authToken, err := tokens.ExtractAndVerifyAuthToken(r.Header)
 	if err != nil {
 		utils.LogAndSendHTTPError(&w, wrapRejectChallengeError(err), http.StatusUnauthorized)
@@ -420,7 +419,7 @@ func startBattle(trainersClient *clients.TrainersClient, battleId string, battle
 }
 
 func extractAndVerifyTokensForBattle(trainersClient *clients.TrainersClient, username string,
-	r *originalHttp.Request) (map[string]items.Item, *utils.TrainerStats, map[string]*pokemons.Pokemon, error) {
+	r *http.Request) (map[string]items.Item, *utils.TrainerStats, map[string]*pokemons.Pokemon, error) {
 	pokemonTkns, err := tokens.ExtractAndVerifyPokemonTokens(r.Header)
 	if err != nil {
 		return nil, nil, nil, err

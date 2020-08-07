@@ -3,7 +3,7 @@ module github.com/NOVAPokemon/battles
 go 1.13
 
 require (
-	github.com/NOVAPokemon/utils v0.0.64
+	github.com/NOVAPokemon/utils v0.0.62
 	github.com/gorilla/mux v1.7.4
 	github.com/gorilla/websocket v1.4.2
 	github.com/pkg/errors v0.9.1
@@ -12,4 +12,8 @@ require (
 	go.mongodb.org/mongo-driver v1.3.1
 )
 
-replace github.com/NOVAPokemon/utils v0.0.64 => ../utils
+replace (
+	github.com/NOVAPokemon/utils v0.0.62 => ../utils
+	github.com/bruno-anjos/archimedes v0.0.2 => ./../../bruno-anjos/archimedes
+	github.com/bruno-anjos/archimedesHTTPClient v0.0.2 => ./../../bruno-anjos/archimedesHTTPClient
+)
