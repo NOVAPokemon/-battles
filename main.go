@@ -1,10 +1,14 @@
 package main
 
 import (
+	"log"
+	"os"
 	"sync"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/clients"
+	http "github.com/bruno-anjos/archimedesHTTPClient"
+	"github.com/golang/geo/s2"
 	"github.com/gorilla/websocket"
 )
 
@@ -33,8 +37,15 @@ func main() {
 		commsManager = utils.CreateDefaultDelayedManager(locationTag, false)
 	}
 
+	location, exists := os.LookupEnv("LOCATION")
+	if !exists {
+		log.Fatalf("no location in environment")
+	}
+
+	httpClient.InitArchimedesClient("localhost", http.DefaultArchimedesPort, s2.CellIDFromToken(location).LatLng())
+
 	hub = &battleHub{
-		notificationClient: clients.NewNotificationClient(nil, commsManager),
+		notificationClient: clients.NewNotificationClient(nil, commsManager, httpClient),
 		AwaitingLobbies:    sync.Map{},
 		QueuedBattles:      sync.Map{},
 		ongoingBattles:     sync.Map{},
