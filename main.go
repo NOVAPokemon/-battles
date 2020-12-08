@@ -1,15 +1,16 @@
 package main
 
 import (
-	"log"
 	"os"
 	"sync"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/clients"
 	http "github.com/bruno-anjos/archimedesHTTPClient"
+	cedUtils "github.com/bruno-anjos/cloud-edge-deployment/pkg/utils"
 	"github.com/golang/geo/s2"
 	"github.com/gorilla/websocket"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -33,16 +34,23 @@ func main() {
 	if !*flags.DelayedComms {
 		commsManager = utils.CreateDefaultCommunicationManager()
 	} else {
-		locationTag := utils.GetLocationTag(utils.DefaultLocationTagsFilename, serverName)
-		commsManager = utils.CreateDefaultDelayedManager(locationTag, false)
+		commsManager = utils.CreateDefaultDelayedManager(false)
 	}
 
 	location, exists := os.LookupEnv("LOCATION")
 	if !exists {
-		log.Fatalf("no location in environment")
+		log.Fatal("no location in environment")
 	}
 
-	httpClient.InitArchimedesClient("localhost", http.DefaultArchimedesPort, s2.CellIDFromToken(location).LatLng())
+	var node string
+	node, exists = os.LookupEnv(cedUtils.NodeIPEnvVarName)
+	if !exists {
+		log.Panicf("no NODE_IP env var")
+	} else {
+		log.Infof("Node IP: %s", node)
+	}
+
+	httpClient.InitArchimedesClient(node, http.DefaultArchimedesPort, s2.CellIDFromToken(location).LatLng())
 
 	hub = &battleHub{
 		notificationClient: clients.NewNotificationClient(nil, commsManager, httpClient),
