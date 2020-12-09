@@ -2,13 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"sync"
 	"time"
 
 	http "github.com/bruno-anjos/archimedesHTTPClient"
+	cedUtils "github.com/bruno-anjos/cloud-edge-deployment/pkg/utils"
 
 	"github.com/NOVAPokemon/utils/notifications"
 	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
@@ -45,8 +45,10 @@ var (
 	hub                 *battleHub
 	httpClient          = &http.Client{}
 	config              *battleServerConfig
+
 	serverName          string
-	serviceNameHeadless string
+	instanceName          string
+
 	commsManager        ws.CommunicationManager
 )
 
@@ -57,10 +59,10 @@ func init() {
 		log.Fatal("Could not load server name")
 	}
 
-	if aux, exists := os.LookupEnv(utils.HeadlessServiceNameEnvVar); exists {
-		serviceNameHeadless = aux
+	if aux, exists := os.LookupEnv(cedUtils.InstanceEnvVarName); exists {
+		instanceName = aux
 	} else {
-		log.Fatal("Could not load headless service name")
+		log.Fatal("Could not load instance name")
 	}
 
 	config = loadConfig()
@@ -244,9 +246,10 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	hub.AwaitingLobbies.Store(lobbyId, newBattle)
 	go cleanBattle(trackInfo, newBattle, &hub.AwaitingLobbies)
 
-	toMarshal := notifications.WantsToBattleContent{Username: challengedPlayer,
+	toMarshal := notifications.WantsToBattleContent{
+		Username:       challengedPlayer,
 		LobbyId:        lobbyId.Hex(),
-		ServerHostname: fmt.Sprintf("%s.%s", serverName, serviceNameHeadless),
+		ServerHostname: instanceName,
 	}
 
 	contentBytes, err := json.Marshal(toMarshal)

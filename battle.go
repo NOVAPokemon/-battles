@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/mitchellh/mapstructure"
 	"sync"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/items"
