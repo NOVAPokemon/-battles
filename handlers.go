@@ -27,6 +27,10 @@ import (
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"fmt"
+	"strconv"
+	"github.com/docker/go-connections/nat"
+	originalHTTP "net/http"
 )
 
 type keyType = string
@@ -42,14 +46,14 @@ type battleHub struct {
 const configFilename = "configs.json"
 
 var (
-	hub                 *battleHub
-	httpClient          = &http.Client{}
-	config              *battleServerConfig
+	hub        *battleHub
+	httpClient = &http.Client{Client: originalHTTP.Client{Timeout: clients.RequestTimeout}}
+	config     *battleServerConfig
 
-	serverName          string
-	instanceName          string
+	serverName   string
+	externalAddr string
 
-	commsManager        ws.CommunicationManager
+	commsManager ws.CommunicationManager
 )
 
 func init() {
@@ -59,11 +63,23 @@ func init() {
 		log.Fatal("Could not load server name")
 	}
 
-	if aux, exists := os.LookupEnv(cedUtils.InstanceEnvVarName); exists {
-		instanceName = aux
-	} else {
-		log.Fatal("Could not load instance name")
+	nodeIP, ok := os.LookupEnv(cedUtils.NodeIPEnvVarName)
+	if !ok {
+		log.Fatal("Could not load node ip")
 	}
+
+	portMapping := cedUtils.GetPortMapFromEnvVar()
+
+	servicePortString, err := nat.NewPort("tcp", strconv.Itoa(utils.BattlesPort))
+	if err != nil {
+		log.Panic(err)
+	}
+
+	externalPortString := portMapping[servicePortString][0].HostPort
+
+	externalAddr = fmt.Sprintf("%s:%d", nodeIP, nat.Port(externalPortString).Int())
+
+	log.Infof("External addr: %s", externalAddr)
 
 	config = loadConfig()
 }
@@ -249,7 +265,7 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	toMarshal := notifications.WantsToBattleContent{
 		Username:       challengedPlayer,
 		LobbyId:        lobbyId.Hex(),
-		ServerHostname: instanceName,
+		ServerHostname: externalAddr,
 	}
 
 	contentBytes, err := json.Marshal(toMarshal)
