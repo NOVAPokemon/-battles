@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -23,18 +25,18 @@ import (
 	"github.com/NOVAPokemon/utils/tokens"
 	ws "github.com/NOVAPokemon/utils/websockets"
 	"github.com/NOVAPokemon/utils/websockets/battles"
+	"github.com/docker/go-connections/nat"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"fmt"
-	"strconv"
-	"github.com/docker/go-connections/nat"
 	originalHTTP "net/http"
 )
 
-type keyType = string
-type valueType = *battleLobby
+type (
+	keyType   = string
+	valueType = *battleLobby
+)
 
 type battleHub struct {
 	notificationClient *clients.NotificationClient
@@ -282,6 +284,7 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	notificationMsg := notificationsMessages.NotificationMessage{
 		Notification: notification,
+		Info:         trackInfo,
 	}
 
 	log.Infof("Sending notification: Id:%s Content:%s to %s", notification.Id,
@@ -423,7 +426,7 @@ func startBattle(trainersClient *clients.TrainersClient, battleId string, battle
 	emitStartBattle()
 	winner, err := battle.startBattle()
 	if err != nil {
-		log.Error(err)
+		log.Warn(err)
 		ws.FinishLobby(battle.Lobby) // abort lobby without commiting
 	} else {
 		log.Infof("Battle %s finished, winner is: %s", battleId, winner)
@@ -562,7 +565,6 @@ func commitBattleResults(trainersClient *clients.TrainersClient, battleId string
 
 func removeUsedItems(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus, authToken string,
 	outChan chan *ws.WebsocketMsg) error {
-
 	usedItems := player.UsedItems
 	if len(usedItems) == 0 {
 		return nil
@@ -591,7 +593,6 @@ func removeUsedItems(trainersClient *clients.TrainersClient, player battles.Trai
 
 func updateTrainerPokemons(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus,
 	authToken string, outChan chan *ws.WebsocketMsg, xpAmount float64) error {
-
 	// updates pokemon status after battle: adds XP and updates HP
 	// player 0
 
@@ -647,7 +648,6 @@ func cleanBattle(info ws.TrackedInfo, battle *battleLobby, containingMap *sync.M
 
 func addExperienceToPlayer(trainersClient *clients.TrainersClient, player battles.TrainerBattleStatus,
 	authToken string, outChan chan *ws.WebsocketMsg, XPAmount float64) error {
-
 	stats := player.TrainerStats
 	stats.XP += XPAmount
 
