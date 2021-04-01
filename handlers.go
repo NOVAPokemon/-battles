@@ -45,7 +45,10 @@ const configFilename = "configs.json"
 var (
 	hub        *battleHub
 	httpClient = &http.Client{Timeout: clients.RequestTimeout}
-	config     *battleServerConfig
+
+	basicClient = clients.NewBasicClient(false, "")
+
+	config *battleServerConfig
 
 	serverName          string
 	serviceNameHeadless string
@@ -116,7 +119,7 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 
 	trackInfo := ws.GetTrackInfoFromHeader(&r.Header)
 
-	trainersClient := clients.NewTrainersClient(httpClient, commsManager)
+	trainersClient := clients.NewTrainersClient(httpClient, commsManager, basicClient)
 
 	log.Infof("New player queued for battle: %s", authToken.Username)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient,
@@ -208,7 +211,7 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 
 	trackInfo := ws.GetTrackInfoFromHeader(&r.Header)
 
-	trainersClient := clients.NewTrainersClient(httpClient, commsManager)
+	trainersClient := clients.NewTrainersClient(httpClient, commsManager, basicClient)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient,
 		authToken.Username, r)
 	if err != nil {
@@ -299,7 +302,7 @@ func handleAcceptChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	trainersClient := clients.NewTrainersClient(httpClient, commsManager)
+	trainersClient := clients.NewTrainersClient(httpClient, commsManager, basicClient)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient,
 		authToken.Username, r)
 	if err != nil {
