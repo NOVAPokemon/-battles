@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/mitchellh/mapstructure"
 	"sync"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/items"
@@ -45,9 +46,7 @@ func (b *battleLobby) addPlayer(username string, pokemons map[string]*pokemons.P
 	trainerItems map[string]items.Item, trainerConn *websocket.Conn, authToken string,
 	commsManager ws.CommunicationManager) (int,
 	error) {
-
 	trainersJoined, err := ws.AddTrainer(b.Lobby, username, trainerConn, commsManager)
-
 	if err != nil {
 		return -1, wrapAddPlayerError(err)
 	}
@@ -93,7 +92,7 @@ func (b *battleLobby) setupLoop() error {
 
 	log.Info("Sent START message")
 	// loops until both players have selected a pokemon
-	for ; players[0].SelectedPokemon == nil || players[1].SelectedPokemon == nil; {
+	for players[0].SelectedPokemon == nil || players[1].SelectedPokemon == nil {
 		b.logBattleStatus()
 		select {
 		case wsMsg, ok := <-b.Lobby.TrainerInChannels[0]:
@@ -171,7 +170,6 @@ func (b *battleLobby) mainLoop() (string, error) {
 
 func (b *battleLobby) handleMoveInSelectionPhase(wsMsg *ws.WebsocketMsg, issuer *battles.TrainerBattleStatus,
 	issuerChan chan *ws.WebsocketMsg) {
-
 	if wsMsg.Content.AppMsgType != battles.SelectPokemon {
 		errMsg := battles.ErrorBattleMessage{
 			Info:  battles.ErrorPokemonSelectionPhase.Error(),
