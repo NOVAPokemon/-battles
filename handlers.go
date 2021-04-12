@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -121,20 +120,27 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 
 	trainersClient := clients.NewTrainersClient(httpClient, commsManager, basicClient)
 
-	log.Infof("New player queued for battle: %s", authToken.Username)
+	reqLogger := log.WithFields(log.Fields{
+		"TYPE": "QUEUE",
+		"USER": authToken.Username,
+	})
+
+	defer reqLogger.Info("exiting handler")
+
+	reqLogger.Infof("New player queued for battle: %s", authToken.Username)
 	trainerItems, statsToken, pokemonsForBattle, err := extractAndVerifyTokensForBattle(trainersClient,
 		authToken.Username, r)
 	if err != nil {
 		err = writeErrorMessageAndClose(conn, err)
 		if err != nil {
-			log.Error(err)
+			reqLogger.Error(err)
 		}
 		return
 	}
 
-	log.Info("Player pokemons:")
+	reqLogger.Info("Player pokemons:")
 	for _, p := range pokemonsForBattle {
-		log.Infof("%s\t:\t%s", p.Id, p.Species)
+		reqLogger.Infof("%s\t:\t%s", p.Id, p.Species)
 	}
 
 	found := false
@@ -144,39 +150,51 @@ func handleQueueForBattle(w http.ResponseWriter, r *http.Request) {
 	)
 	hub.QueuedBattles.Range(func(key, value interface{}) bool {
 		battleAux = value.(valueType)
+		reqLogger.Infof("will try to add player to battle %s", battleAux.Lobby.Id)
 		playerNr, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems,
 			conn, r.Header.Get(tokens.AuthTokenHeaderName), commsManager)
 		if err != nil {
 			if errors.Cause(err) == ws.ErrorLobbyAlreadyFinished || errors.Cause(err) == ws.ErrorLobbyIsFull {
-				log.Warn(err)
+				reqLogger.Warn(err)
 			} else {
-				log.Error(err)
+				reqLogger.Error(err)
 			}
 			return true
 		}
 		if playerNr == 2 {
+			reqLogger.Infof("Found battle %s", battleAux.Lobby.Id)
 			found = true
 			startBattle(trainersClient, battleAux.Lobby.Id, battleAux)
 			return false
 		}
+		reqLogger.Infof("got into the weird possibility")
 		return true
 	})
 
+	reqLogger.Info("iterated through queued battles")
+
 	if found {
+		reqLogger.Info("found a viable lobby to join")
 		hub.QueuedBattles.Delete(battleAux.Lobby.Id)
 		return
 	}
 
 	lobbyId := primitive.NewObjectID()
+
+	reqLogger.Info("will create new lobby")
 	battle := ws.NewLobby(lobbyId.Hex(), 2, &trackInfo)
+
+	reqLogger.Info("will create battle")
 	battleAux = createBattle(battle, config.DefaultCooldown, [2]string{authToken.Username, ""})
+	reqLogger.Infof("Created lobby %s", battle.Id)
+
 	_, err = battleAux.addPlayer(authToken.Username, pokemonsForBattle, statsToken, trainerItems, conn,
 		r.Header.Get(tokens.AuthTokenHeaderName), commsManager)
 	if err != nil {
 		if errors.Cause(err) == ws.ErrorLobbyAlreadyFinished {
-			log.Warn(err)
+			reqLogger.Warn(err)
 		} else {
-			log.Error(err)
+			reqLogger.Error(err)
 		}
 
 		errMsg := ws.ErrorMessage{
@@ -253,7 +271,7 @@ func handleChallengeToBattle(w http.ResponseWriter, r *http.Request) {
 	toMarshal := notifications.WantsToBattleContent{
 		Username:       challengedPlayer,
 		LobbyId:        lobbyId.Hex(),
-		ServerHostname: fmt.Sprintf("%s.%s", serverName, serviceNameHeadless),
+		ServerHostname: serverName,
 	}
 
 	contentBytes, err := json.Marshal(toMarshal)
