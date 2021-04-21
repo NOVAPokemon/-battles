@@ -21,7 +21,8 @@ type (
 		Lobby               *ws.Lobby
 		Winner              string
 		cooldown            time.Duration
-		RejectChannel       chan struct{}
+		rejectChannel       chan struct{}
+		Reject              sync.Once
 		AuthTokens          [2]string
 		PlayersBattleStatus [2]*battles.TrainerBattleStatus
 		Expected            [2]string
@@ -34,7 +35,8 @@ func createBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *battleLobb
 	return &battleLobby{
 		AuthTokens:          [2]string{},
 		PlayersBattleStatus: [2]*battles.TrainerBattleStatus{},
-		RejectChannel:       make(chan struct{}),
+		rejectChannel:       make(chan struct{}),
+		Reject:              sync.Once{},
 		Winner:              "",
 		Lobby:               lobby,
 		cooldown:            time.Duration(cooldown) + time.Millisecond,
@@ -48,7 +50,6 @@ func (b *battleLobby) addPlayer(username string, pokemons map[string]*pokemons.P
 	error) {
 
 	trainersJoined, err := ws.AddTrainer(b.Lobby, username, trainerConn, commsManager)
-
 	if err != nil {
 		return -1, wrapAddPlayerError(err)
 	}
@@ -94,7 +95,7 @@ func (b *battleLobby) setupLoop() error {
 
 	log.Info("Sent START message")
 	// loops until both players have selected a pokemon
-	for ; players[0].SelectedPokemon == nil || players[1].SelectedPokemon == nil; {
+	for players[0].SelectedPokemon == nil || players[1].SelectedPokemon == nil {
 		b.logBattleStatus()
 		select {
 		case wsMsg, ok := <-b.Lobby.TrainerInChannels[0]:
