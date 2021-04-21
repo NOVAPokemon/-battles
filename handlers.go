@@ -12,6 +12,8 @@ import (
 	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"github.com/pkg/errors"
 
+	originalHTTP "net/http"
+
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/api"
 	"github.com/NOVAPokemon/utils/clients"
@@ -416,7 +418,9 @@ func handleRejectChallenge(w http.ResponseWriter, r *http.Request) {
 	for _, trainer := range battle.Expected {
 		if trainer == authToken.Username {
 			log.Infof("%s rejected invite for lobby %s", trainer, lobbyIdHex)
-			close(battle.RejectChannel)
+			battle.Reject.Do(func() {
+				close(battle.rejectChannel)
+			})
 			return
 		}
 	}
@@ -634,7 +638,7 @@ func cleanBattle(info ws.TrackedInfo, battle *battleLobby, containingMap *sync.M
 	case <-timer.C:
 		log.Warnf("closing lobby %s since time expired", battle.Lobby.Id)
 		ws.FinishLobby(battle.Lobby)
-	case <-battle.RejectChannel:
+	case <-battle.rejectChannel:
 		if ws.GetTrainersJoined(battle.Lobby) > 0 {
 			select {
 			case <-battle.Lobby.DoneListeningFromConn[0]:

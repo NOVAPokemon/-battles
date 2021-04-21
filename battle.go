@@ -21,7 +21,8 @@ type (
 		Lobby               *ws.Lobby
 		Winner              string
 		cooldown            time.Duration
-		RejectChannel       chan struct{}
+		rejectChannel       chan struct{}
+		Reject              sync.Once
 		AuthTokens          [2]string
 		PlayersBattleStatus [2]*battles.TrainerBattleStatus
 		Expected            [2]string
@@ -34,7 +35,8 @@ func createBattle(lobby *ws.Lobby, cooldown int, expected [2]string) *battleLobb
 	return &battleLobby{
 		AuthTokens:          [2]string{},
 		PlayersBattleStatus: [2]*battles.TrainerBattleStatus{},
-		RejectChannel:       make(chan struct{}),
+		rejectChannel:       make(chan struct{}),
+		Reject:              sync.Once{},
 		Winner:              "",
 		Lobby:               lobby,
 		cooldown:            time.Duration(cooldown) + time.Millisecond,
