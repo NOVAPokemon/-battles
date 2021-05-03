@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -45,7 +44,12 @@ const configFilename = "configs.json"
 
 var (
 	hub        *battleHub
-	httpClient = &http.Client{Timeout: clients.RequestTimeout}
+	httpClient = &http.Client{
+		Client: originalHTTP.Client{
+			Timeout:   clients.RequestTimeout,
+			Transport: clients.NewTransport(),
+		},
+	}
 
 	basicClient = clients.NewBasicClient(false, "")
 
