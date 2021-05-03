@@ -50,8 +50,13 @@ const configFilename = "configs.json"
 
 var (
 	hub        *battleHub
-	httpClient = &http.Client{Client: originalHTTP.Client{Timeout: clients.RequestTimeout}}
-	config     *battleServerConfig
+	httpClient = &http.Client{
+		Client: originalHTTP.Client{
+			Timeout:   clients.RequestTimeout,
+			Transport: clients.NewTransport(),
+		},
+	}
+	config *battleServerConfig
 
 	serverName   string
 	externalAddr string
