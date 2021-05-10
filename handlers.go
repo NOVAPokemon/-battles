@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -10,8 +11,6 @@ import (
 	"github.com/NOVAPokemon/utils/notifications"
 	notificationsMessages "github.com/NOVAPokemon/utils/websockets/notifications"
 	"github.com/pkg/errors"
-
-	originalHTTP "net/http"
 
 	"github.com/NOVAPokemon/utils"
 	"github.com/NOVAPokemon/utils/api"
@@ -45,10 +44,8 @@ const configFilename = "configs.json"
 var (
 	hub        *battleHub
 	httpClient = &http.Client{
-		Client: originalHTTP.Client{
-			Timeout:   clients.RequestTimeout,
-			Transport: clients.NewTransport(),
-		},
+		Timeout:   utils.Timeout,
+		Transport: clients.NewTransport(),
 	}
 
 	basicClient = clients.NewBasicClient(false, "")
