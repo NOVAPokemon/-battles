@@ -52,7 +52,7 @@ var (
 	hub        *battleHub
 	httpClient = &http.Client{
 		Client: originalHTTP.Client{
-			Timeout:   clients.RequestTimeout,
+			Timeout:   ws.Timeout,
 			Transport: clients.NewTransport(),
 		},
 	}
