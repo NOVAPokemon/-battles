@@ -44,7 +44,7 @@ const configFilename = "configs.json"
 var (
 	hub        *battleHub
 	httpClient = &http.Client{
-		Timeout:   utils.Timeout,
+		Timeout:   ws.Timeout,
 		Transport: clients.NewTransport(),
 	}
 
